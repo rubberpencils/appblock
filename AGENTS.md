@@ -86,8 +86,10 @@ don't wait to be asked; check with `git config core.hooksPath`):
    `app/src/androidTest/` in the same commit.
 
 CI (`.github/workflows/ci.yml`) runs on every branch push: `test` (unit
-tests + compile), and the suite above on fresh emulators: `e2e` on Android 14
-and `e2e-android-16` on Android 16, the version the app targets. Check a
+tests + compile), and the suite above on fresh emulators: `e2e-android-14`
+(the Google Play image, like `scripts/emulator.sh`'s) and `e2e-android-16`
+on Android 16, the version the app targets. The suite installs `fixture/`,
+a stand-in app with YouTube's Shorts player view id, for the Shorts tests. Check a
 push with `gh run list`; a failing e2e run uploads an `e2e-report-api-<level>`
 artifact with the HTML report, plus a screenshot and the device log for
 each failed test.

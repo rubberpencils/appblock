@@ -36,18 +36,18 @@ jobs:
 
   # End-to-end tests (app/src/androidTest): the real app on an emulator,
   # driven by UI Automator. Same suite as scripts/e2e.sh locally. Twice: on
-  # Android 14 (like the test phone), and on Android 16, the version the app
-  # targets, where the system applies newer rules (screens drawn under the
-  # bars, the new back handling) that Android 14 never does. The Android 14
-  # run keeps the plain name "e2e": main's ruleset requires a check by it.
+  # Android 14 (like the test phone), on the Google Play image like
+  # scripts/emulator.sh's, and on Android 16, the version the app targets,
+  # where the system applies newer rules (screens drawn under the bars, the
+  # new back handling) that Android 14 never does.
   e2e:
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { api: 34, name: e2e }
-          - { api: 36, name: e2e-android-16 }
+          - { api: 34, target: google_apis_playstore, name: e2e-android-14 }
+          - { api: 36, target: google_apis, name: e2e-android-16 }
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -71,7 +71,7 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api }}
-          target: google_apis
+          target: ${{ matrix.target }}
           arch: x86_64
           profile: pixel_7
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
