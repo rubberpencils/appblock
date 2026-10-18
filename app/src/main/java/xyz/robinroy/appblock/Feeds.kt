@@ -61,6 +61,9 @@ object Feeds {
         conn.connectTimeout = 10_000
         conn.readTimeout = 10_000
         conn.useCaches = false
+        // The default ("Dalvik/2.1.0 (Linux; U; Android 14; CPH2401 ...)")
+        // names the phone's model and Android version.
+        conn.setRequestProperty("User-Agent", "AppBlock")
         prefs(ctx).getString("etag", null)?.let { conn.setRequestProperty("If-None-Match", it) }
         try {
             when (conn.responseCode) {
