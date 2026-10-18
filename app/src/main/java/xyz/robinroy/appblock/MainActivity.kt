@@ -506,7 +506,7 @@ class MainActivity : Activity() {
         val links = Ui.muted(this, "", 13f).apply {
             gravity = Gravity.CENTER
             text = Html.fromHtml(
-                "<a href=\"https://github.com/robinroy03/appblock\">Open source</a> under MIT. " +
+                "<a href=\"https://github.com/rubberpencils/appblock\">Open source</a> under MIT. " +
                     "Feedback? <a href=\"mailto:support@robinroy.xyz\">Email me</a>. " +
                     "Made by <a href=\"https://x.com/_RobinRoy\">robin</a>.",
                 Html.FROM_HTML_MODE_LEGACY)

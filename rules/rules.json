@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "version": 1,
-  "source": "https://raw.githubusercontent.com/robinroy03/appblock/main/rules/rules.signed.json",
+  "source": "https://raw.githubusercontent.com/rubberpencils/appblock/main/rules/rules.signed.json",
   "feeds": {
     "com.google.android.youtube": [
       {
