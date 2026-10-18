@@ -26,6 +26,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -36,7 +37,10 @@ import android.widget.TextView
  * window on screen changes, and hands it the list of windows with the app
  * each belongs to and where it is. That's every app on screen, not just the
  * one in front: both halves of a split screen, a floating pop-up window.
- * The service reads only that (which app, where), never what's inside.
+ * The service reads only that (which app, where), never what's inside,
+ * except in an app whose short-video feed the user blocked (YouTube's
+ * Shorts): there it looks for the feed's player by its view id, nothing
+ * else, and walls the app while one is on screen.
  *
  * Each limited app on screen gets its own session and its own countdown
  * notification, ticked every few seconds so a session is cut off the moment
@@ -63,9 +67,17 @@ class BlockerService : AccessibilityService() {
     // Window id -> app, from the last read: a window's contents can be
     // briefly unreadable mid-transition, and the wall mustn't drop for it.
     private var windowApps = mapOf<Int, String>()
+    // App -> its windows' contents, from the last read: searched for a blocked feed's player.
+    private var appRoots = mapOf<String, List<AccessibilityNodeInfo>>()
+    // Apps on screen whose feed is blocked: their content changes are watched.
+    private var watchedFeeds = emptySet<String>()
+    private val versions = mutableMapOf<String, Long>()  // feed app on screen -> its versionCode
+    private val feedsShown = mutableSetOf<String>()      // feed apps showing their feed (for the log)
+    private var refreshQueued = false
 
     /** What a wall shows; when it changes, the wall is built anew. */
-    private data class Look(val size: Storage.WallSize, val popUp: Boolean, val homeButton: Boolean)
+    private data class Look(val kind: Storage.WallKind, val size: Storage.WallSize, val popUp: Boolean,
+                            val homeButton: Boolean)
     private class Wall(val view: View, var bounds: Storage.Bounds, val look: Look)
     private data class Timer(val deadline: Long, val level: Int)
 
@@ -91,8 +103,19 @@ class BlockerService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            // In a watched feed's app (Shorts opening, or scrolled away from).
+            // A playing video changes the screen many times a second: look
+            // again at most every 300 ms.
+            if (event.packageName?.toString() in watchedFeeds && !refreshQueued) {
+                refreshQueued = true
+                handler.postDelayed(refreshNow, 300)
+            }
+            return
+        }
         // A burst of window events (an app opening fires several) is one refresh.
         handler.removeCallbacks(refreshNow)
+        refreshQueued = true
         handler.postDelayed(refreshNow, 50)
     }
 
@@ -103,6 +126,7 @@ class BlockerService : AccessibilityService() {
     /** Re-read what's on screen and act on it. */
     private fun refresh() {
         handler.removeCallbacks(refreshNow)
+        refreshQueued = false
         // Screen off or locked: nothing's being used, and a wall must never
         // cover the lock screen.
         val usable = getSystemService(PowerManager::class.java).isInteractive &&
@@ -118,6 +142,7 @@ class BlockerService : AccessibilityService() {
     private fun readWindows(): List<Storage.ScreenWindow> {
         val list = try { windows } catch (e: Exception) { emptyList<AccessibilityWindowInfo>() }
         val apps = mutableMapOf<Int, String>()
+        val roots = mutableMapOf<String, MutableList<AccessibilityNodeInfo>>()
         val out = list.map { w ->
             val r = Rect().also { w.getBoundsInScreen(it) }
             val kind = when (w.type) {
@@ -125,19 +150,22 @@ class BlockerService : AccessibilityService() {
                 AccessibilityWindowInfo.TYPE_SYSTEM -> Storage.WindowKind.SYSTEM
                 else -> Storage.WindowKind.OTHER
             }
+            val root = if (kind != Storage.WindowKind.APP) null else try { w.root } catch (e: Exception) { null }
             val pkg = if (kind != Storage.WindowKind.APP) null
-                else (try { w.root?.packageName?.toString() } catch (e: Exception) { null }) ?: windowApps[w.id]
+                else root?.packageName?.toString() ?: windowApps[w.id]
             if (pkg != null) apps[w.id] = pkg
+            if (pkg != null && root != null) roots.getOrPut(pkg) { mutableListOf() } += root
             Storage.ScreenWindow(kind, Storage.Bounds(r.left, r.top, r.right, r.bottom), pkg)
         }
         windowApps = apps
+        appRoots = roots
         return out
     }
 
     private fun spent(pkg: String, rule: Rule) =
         Storage.usedMsInWindow(this, pkg, rule.windowMin) >= rule.allowMin * 60_000L
 
-    /** Walls over the spent apps on screen, sessions and countdowns for the other limited ones. */
+    /** Walls over the spent apps on screen (and blocked feeds), sessions and countdowns for the other limited ones. */
     private fun enforce(windows: List<Storage.ScreenWindow>, screen: Point) {
         val rules = Storage.loadRules(this)
         val plan = Storage.plan(onScreen.keys, rules, ::spent)
@@ -151,14 +179,18 @@ class BlockerService : AccessibilityService() {
         // Home already showing beside the app (it's in a pop-up over it): a
         // "Go to home screen" button would do nothing.
         val homeButton = homePackage() !in onScreen
-        for (pkg in walls.keys.toList()) if (stepAside || pkg !in plan.walled) hideWall(pkg)
-        if (!stepAside) for (pkg in plan.walled) {
+        val feedApps = Storage.loadFeedBlocks(this).filter { it in onScreen && it !in plan.walled }.toSet()
+        watchFeeds(feedApps)
+        val kinds = Storage.wallKinds(plan.walled, feedApps.filter(::feedShowing).toSet())
+        for (pkg in walls.keys.toList()) if (stepAside || pkg !in kinds) hideWall(pkg)
+        if (!stepAside) for ((pkg, kind) in kinds) {
             val app = onScreen.getValue(pkg)
             val bounds = Storage.wallBounds(app, windows, screen.y)
             val popUp = Storage.isPopUp(app, screen.x, screen.y)
             // A pop-up leaves the rest of the screen usable: no button needed there.
-            val look = Look(Storage.wallSize(toDp(bounds.width), toDp(bounds.height)), popUp, homeButton && !popUp)
-            showWall(pkg, rules.getValue(pkg), bounds, look)
+            val look = Look(kind, Storage.wallSize(toDp(bounds.width), toDp(bounds.height)), popUp,
+                homeButton && !popUp)
+            showWall(pkg, rules[pkg], bounds, look)
         }
 
         showTimers(plan.timed, rules)
@@ -183,6 +215,58 @@ class BlockerService : AccessibilityService() {
         val start = sessions.remove(pkg) ?: return
         if (rule != null) Storage.addUsage(this, pkg, start, System.currentTimeMillis(), rule.windowMin)
     }
+
+    // ------------------------------------------------------------------ feeds
+
+    /**
+     * Watch the content of the apps on screen whose feed is blocked: a feed
+     * opens inside the app (a tab, a link) without any window changing.
+     * Content changes are the busiest events there are, so they're only
+     * asked for while such an app is on screen.
+     */
+    private fun watchFeeds(apps: Set<String>) {
+        for (pkg in versions.keys - apps) { versions.remove(pkg); feedsShown.remove(pkg) }
+        val was = watchedFeeds.isNotEmpty()
+        watchedFeeds = apps
+        if (apps.isNotEmpty() == was) return
+        val info = serviceInfo ?: return
+        val content = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        info.eventTypes = if (apps.isNotEmpty()) info.eventTypes or content else info.eventTypes and content.inv()
+        serviceInfo = info
+    }
+
+    /** Whether `pkg` is showing its feed (Shorts): one of its rules' player views fills its window. */
+    private fun feedShowing(pkg: String): Boolean {
+        val rules = Feeds.rules(this) ?: return false
+        val version = versions.getOrPut(pkg) {
+            versionOf(pkg).also { Log.i(TAG, "$pkg $it on screen, feed rules ${rules.version}") }
+        }
+        Feeds.maybeFetch(this, pkg, version)
+        val window = onScreen[pkg] ?: return false
+        val roots = appRoots[pkg].orEmpty()
+        val showing = Storage.feedRulesFor(rules, pkg, version).any { rule ->
+            val found = roots.flatMap { root ->
+                rule.ids.flatMap { id ->
+                    try { root.findAccessibilityNodeInfosByViewId("$pkg:id/$id") } catch (e: Exception) { emptyList() }
+                }
+            }.map { node ->
+                val r = Rect().also { node.getBoundsInScreen(it) }
+                Storage.FoundView(node.isVisibleToUser, Storage.Bounds(r.left, r.top, r.right, r.bottom))
+            }
+            Storage.feedShowing(found, window, rule.minCover)
+        }
+        if (showing != pkg in feedsShown) {
+            if (showing) feedsShown += pkg else feedsShown -= pkg
+            Log.i(TAG, if (showing) "$pkg feed on screen" else "$pkg feed gone")
+        }
+        return showing
+    }
+
+    private fun versionOf(pkg: String): Long = try {
+        val info = packageManager.getPackageInfo(pkg, 0)
+        @Suppress("DEPRECATION")
+        if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+    } catch (e: Exception) { -1 }
 
     /** The launcher's package (the user can change launchers, so asked each time). */
     private fun homePackage(): String? = packageManager.resolveActivity(
@@ -292,7 +376,7 @@ class BlockerService : AccessibilityService() {
     }
 
     /** Cover `pkg`'s window with the block wall, or move its wall to where the window now is. */
-    private fun showWall(pkg: String, rule: Rule, bounds: Storage.Bounds, look: Look) {
+    private fun showWall(pkg: String, rule: Rule?, bounds: Storage.Bounds, look: Look) {
         val wm = getSystemService(WindowManager::class.java)
         walls[pkg]?.let { wall ->
             // Crossing into another layout (split <-> full screen <-> pop-up) rebuilds it.
@@ -304,7 +388,7 @@ class BlockerService : AccessibilityService() {
             }
             hideWall(pkg)
         }
-        Log.i(TAG, "blocking $pkg at $bounds")
+        Log.i(TAG, "blocking $pkg (${look.kind}) at $bounds")
         val view = wallView(pkg, rule, look)
         try {
             wm.addView(view, wallParams(bounds))
@@ -320,10 +404,10 @@ class BlockerService : AccessibilityService() {
         try { getSystemService(WindowManager::class.java).removeView(wall.view) } catch (e: Exception) {}
     }
 
-    private fun wallView(pkg: String, rule: Rule, look: Look): View {
+    private fun wallView(pkg: String, rule: Rule?, look: Look): View {
         val full = look.size == Storage.WallSize.FULL
         val tiny = look.size == Storage.WallSize.TINY
-        val waitMin = Storage.ceilMin(Storage.msUntilUnblocked(this, pkg, rule))
+        val feed = look.kind == Storage.WallKind.FEED
         val label = labelFor(pkg)
 
         return LinearLayout(this).apply {
@@ -337,8 +421,10 @@ class BlockerService : AccessibilityService() {
             // One TextView carries both lines (the e2e tests read it whole);
             // spans give the headline weight and the wait time a calmer tone.
             // A pop-up a few fingers wide fits one short word: it's plain which app it's over.
-            val headline = if (tiny) "Blocked." else "$label is blocked."
-            val wait = "Try again in ${Storage.fmtSpan(waitMin.toInt())}."
+            val headline = if (feed) { if (tiny) "No Shorts." else "Shorts are blocked." }
+                else if (tiny) "Blocked." else "$label is blocked."
+            val wait = if (feed) "The rest of $label is still open."
+                else "Try again in ${Storage.fmtSpan(Storage.ceilMin(Storage.msUntilUnblocked(this@BlockerService, pkg, rule!!)).toInt())}."
             val message = SpannableString("$headline\n\n$wait").apply {
                 setSpan(AbsoluteSizeSpan(if (full) 40 else if (tiny) 22 else 28, true), 0, headline.length + 1, 0)
                 setSpan(Ui.FontSpan(Ui.serif(this@BlockerService)), 0, headline.length, 0)
@@ -377,17 +463,24 @@ class BlockerService : AccessibilityService() {
                 setLineSpacing(0f, 1.05f)
                 letterSpacing = -0.01f
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
-            if (full) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
+            if (full && !feed) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, 16) })
             // The wall covers a pop-up's own close button and handle (they're
-            // drawn inside its window), so say how else to close it.
-            if (look.popUp) addView(Ui.muted(context, "To close it, swipe it away in Recents.",
+            // drawn inside its window), so say how else to close it. Shorts
+            // has the back button below instead.
+            if (look.popUp && !feed) addView(Ui.muted(context, "To close it, swipe it away in Recents.",
                 if (full) 14f else if (tiny) 11f else 13f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, if (tiny) 8 else 16) })
+            // Out of Shorts, into the rest of the app: back, as if the user swiped it.
+            if (feed) addView(Ui.primaryButton(context, "Go back") {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+            }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply {
+                topMargin = Ui.dp(context, if (full) 36 else 16)
+            })
             // On every wall that could cover the gesture bar, so there's always a way out.
-            if (look.homeButton) addView(Ui.primaryButton(context, "Go to home screen", R.drawable.ic_chevron) {
+            else if (look.homeButton) addView(Ui.primaryButton(context, "Go to home screen", R.drawable.ic_chevron) {
                 performGlobalAction(GLOBAL_ACTION_HOME)
             }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply {
                 topMargin = Ui.dp(context, if (full) 36 else 16)
@@ -410,6 +503,8 @@ class BlockerService : AccessibilityService() {
         showTimers(emptySet(), rules)
         for (pkg in walls.keys.toList()) hideWall(pkg)
         onScreen = emptyMap()
+        appRoots = emptyMap()
+        watchedFeeds = emptySet()
         try { unregisterReceiver(screenReceiver) } catch (e: Exception) {}
         Log.i(TAG, "disconnected")
     }
