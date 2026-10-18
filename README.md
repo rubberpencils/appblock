@@ -78,8 +78,6 @@ enough to check in, never enough to drown.
   appears, but the full-screen incoming-call UI is the app's window. Answering
   while the app is over budget will likely get walled. Think twice before
   blocking an app you take calls on.
-- **Picture-in-picture** mini-players are on screen, so they count and get
-  walled like a pop-up; entering the app to start one is blocked regardless.
 - **The notification shade and power menu:** pulling either down over a blocked
   app lifts the wall while it's open, so the shade stays usable. The wall is back
   the moment it closes, and a limited app keeps counting underneath.

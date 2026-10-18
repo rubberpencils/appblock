@@ -147,9 +147,15 @@ object E2e {
      */
     fun openAsPopUp(pkg: String) {
         shell("settings put global enable_freeform_support 1")
+        // A task left from an earlier test would come back as it was (full
+        // screen), not as a pop-up, so it goes first.
+        taskIdOrNull(pkg)?.let { shell("am stack remove $it") }
         val launcher = ctx.packageManager.getLaunchIntentForPackage(pkg)!!.component!!
         shell("am start -W --windowingMode 5 -n ${launcher.flattenToShortString()}")
-        check(eventually { isOnScreen(pkg) }) { "$pkg didn't open as a pop-up" }
+        check(eventually {
+            isOnScreen(pkg) &&
+                (device.findObject(By.pkg(pkg))?.let { windowBounds(it).width() < device.displayWidth } ?: false)
+        }) { "$pkg didn't open as a pop-up" }
     }
 
     /** Resize `pkg`'s pop-up to `widthDp` x `heightDp`, in the top right corner. */
@@ -165,9 +171,11 @@ object E2e {
     }
 
     /** The task `pkg` runs in. */
-    private fun taskId(pkg: String): Int =
+    private fun taskId(pkg: String): Int = taskIdOrNull(pkg) ?: throw AssertionError("$pkg has no task")
+
+    private fun taskIdOrNull(pkg: String): Int? =
         Regex("taskId=(\\d+): ${Regex.escape(pkg)}/").find(shell("am stack list"))
-            ?.groupValues?.get(1)?.toInt() ?: throw AssertionError("$pkg has no task")
+            ?.groupValues?.get(1)?.toInt()
 
     /** Whether `pkg` has a visible window, per the window manager. */
     fun isOnScreen(pkg: String): Boolean =
