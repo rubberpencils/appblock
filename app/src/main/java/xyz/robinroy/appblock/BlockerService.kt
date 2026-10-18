@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
@@ -20,7 +21,6 @@ import android.os.PowerManager
 import android.text.SpannableString
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
-import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -64,7 +64,9 @@ class BlockerService : AccessibilityService() {
     // briefly unreadable mid-transition, and the wall mustn't drop for it.
     private var windowApps = mapOf<Int, String>()
 
-    private class Wall(val view: View, var bounds: Storage.Bounds, val homeButton: Boolean)
+    /** What a wall shows; when it changes, the wall is built anew. */
+    private data class Look(val size: Storage.WallSize, val popUp: Boolean, val homeButton: Boolean)
+    private class Wall(val view: View, var bounds: Storage.Bounds, val look: Look)
     private data class Timer(val deadline: Long, val level: Int)
 
     private val screenReceiver = object : BroadcastReceiver() {
@@ -106,11 +108,11 @@ class BlockerService : AccessibilityService() {
         val usable = getSystemService(PowerManager::class.java).isInteractive &&
             !getSystemService(KeyguardManager::class.java).isKeyguardLocked
         val windows = if (usable) readWindows() else emptyList()
-        val height = screenHeight()
-        val apps = Storage.onScreenAfter(windows, packageName, height, onScreen)
+        val screen = screenSize()
+        val apps = Storage.onScreenAfter(windows, packageName, screen.y, onScreen)
         if (apps.keys != onScreen.keys) Log.d(TAG, "on screen: ${apps.keys}")
         onScreen = apps
-        enforce(windows, height)
+        enforce(windows, screen)
     }
 
     private fun readWindows(): List<Storage.ScreenWindow> {
@@ -136,7 +138,7 @@ class BlockerService : AccessibilityService() {
         Storage.usedMsInWindow(this, pkg, rule.windowMin) >= rule.allowMin * 60_000L
 
     /** Walls over the spent apps on screen, sessions and countdowns for the other limited ones. */
-    private fun enforce(windows: List<Storage.ScreenWindow>, height: Int) {
+    private fun enforce(windows: List<Storage.ScreenWindow>, screen: Point) {
         val rules = Storage.loadRules(this)
         val plan = Storage.plan(onScreen.keys, rules, ::spent)
         val now = System.currentTimeMillis()
@@ -145,14 +147,18 @@ class BlockerService : AccessibilityService() {
         for (pkg in plan.timed) sessions.getOrPut(pkg) { now }
 
         // The shade or power menu is open: the walls would be over it.
-        val stepAside = Storage.systemOnTop(windows, height)
+        val stepAside = Storage.systemOnTop(windows, screen.y)
         // Home already showing beside the app (it's in a pop-up over it): a
         // "Go to home screen" button would do nothing.
         val homeButton = homePackage() !in onScreen
         for (pkg in walls.keys.toList()) if (stepAside || pkg !in plan.walled) hideWall(pkg)
         if (!stepAside) for (pkg in plan.walled) {
-            showWall(pkg, rules.getValue(pkg),
-                Storage.wallBounds(onScreen.getValue(pkg), windows, height), homeButton)
+            val app = onScreen.getValue(pkg)
+            val bounds = Storage.wallBounds(app, windows, screen.y)
+            val popUp = Storage.isPopUp(app, screen.x, screen.y)
+            // A pop-up leaves the rest of the screen usable: no button needed there.
+            val look = Look(Storage.wallSize(toDp(bounds.width), toDp(bounds.height)), popUp, homeButton && !popUp)
+            showWall(pkg, rules.getValue(pkg), bounds, look)
         }
 
         showTimers(plan.timed, rules)
@@ -182,12 +188,14 @@ class BlockerService : AccessibilityService() {
     private fun homePackage(): String? = packageManager.resolveActivity(
         Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)?.activityInfo?.packageName
 
-    private fun screenHeight(): Int {
+    private fun screenSize(): Point {
         val wm = getSystemService(WindowManager::class.java)
-        if (Build.VERSION.SDK_INT >= 30) return wm.maximumWindowMetrics.bounds.height()
+        if (Build.VERSION.SDK_INT >= 30) return wm.maximumWindowMetrics.bounds.let { Point(it.width(), it.height()) }
         @Suppress("DEPRECATION")
-        return DisplayMetrics().also { wm.defaultDisplay.getRealMetrics(it) }.heightPixels
+        return Point().also { wm.defaultDisplay.getRealSize(it) }
     }
+
+    private fun toDp(px: Int) = (px / resources.displayMetrics.density).toInt()
 
     // ------------------------------------------------------------- countdowns
 
@@ -284,11 +292,11 @@ class BlockerService : AccessibilityService() {
     }
 
     /** Cover `pkg`'s window with the block wall, or move its wall to where the window now is. */
-    private fun showWall(pkg: String, rule: Rule, bounds: Storage.Bounds, homeButton: Boolean) {
+    private fun showWall(pkg: String, rule: Rule, bounds: Storage.Bounds, look: Look) {
         val wm = getSystemService(WindowManager::class.java)
         walls[pkg]?.let { wall ->
-            // Crossing into the other layout (split <-> full screen) rebuilds it.
-            if (wall.homeButton == homeButton && compact(wall.bounds) == compact(bounds)) {
+            // Crossing into another layout (split <-> full screen <-> pop-up) rebuilds it.
+            if (wall.look == look) {
                 if (wall.bounds == bounds) return
                 wall.bounds = bounds
                 try { wm.updateViewLayout(wall.view, wallParams(bounds)) } catch (e: Exception) {}
@@ -297,14 +305,14 @@ class BlockerService : AccessibilityService() {
             hideWall(pkg)
         }
         Log.i(TAG, "blocking $pkg at $bounds")
-        val view = wallView(pkg, rule, compact(bounds), homeButton)
+        val view = wallView(pkg, rule, look)
         try {
             wm.addView(view, wallParams(bounds))
         } catch (e: Exception) {
             Log.w(TAG, "couldn't draw the wall over $pkg", e)
             return
         }
-        walls[pkg] = Wall(view, bounds, homeButton)
+        walls[pkg] = Wall(view, bounds, look)
     }
 
     private fun hideWall(pkg: String) {
@@ -312,10 +320,9 @@ class BlockerService : AccessibilityService() {
         try { getSystemService(WindowManager::class.java).removeView(wall.view) } catch (e: Exception) {}
     }
 
-    /** A window too short for the full wall (a split-screen half, a pop-up) gets the compact one. */
-    private fun compact(b: Storage.Bounds) = b.height < Ui.dp(this, 560)
-
-    private fun wallView(pkg: String, rule: Rule, compact: Boolean, homeButton: Boolean): View {
+    private fun wallView(pkg: String, rule: Rule, look: Look): View {
+        val full = look.size == Storage.WallSize.FULL
+        val tiny = look.size == Storage.WallSize.TINY
         val waitMin = Storage.ceilMin(Storage.msUntilUnblocked(this, pkg, rule))
         val label = labelFor(pkg)
 
@@ -323,23 +330,24 @@ class BlockerService : AccessibilityService() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             clipChildren = false
-            val side = Ui.dp(this@BlockerService, if (compact) 16 else 28)
+            val side = Ui.dp(this@BlockerService, if (full) 28 else if (tiny) 10 else 16)
             setPadding(side, side, side, side)
             setBackgroundColor(getColor(R.color.canvas))
 
             // One TextView carries both lines (the e2e tests read it whole);
             // spans give the headline weight and the wait time a calmer tone.
-            val headline = "$label is blocked."
+            // A pop-up a few fingers wide fits one short word: it's plain which app it's over.
+            val headline = if (tiny) "Blocked." else "$label is blocked."
             val wait = "Try again in ${Storage.fmtSpan(waitMin.toInt())}."
             val message = SpannableString("$headline\n\n$wait").apply {
-                setSpan(AbsoluteSizeSpan(if (compact) 28 else 40, true), 0, headline.length + 1, 0)
+                setSpan(AbsoluteSizeSpan(if (full) 40 else if (tiny) 22 else 28, true), 0, headline.length + 1, 0)
                 setSpan(Ui.FontSpan(Ui.serif(this@BlockerService)), 0, headline.length, 0)
                 setSpan(AbsoluteSizeSpan(10, true), headline.length + 1, headline.length + 2, 0)  // the blank line: a small gap
-                setSpan(AbsoluteSizeSpan(if (compact) 15 else 18, true), headline.length + 2, length, 0)
+                setSpan(AbsoluteSizeSpan(if (full) 18 else if (tiny) 13 else 15, true), headline.length + 2, length, 0)
                 setSpan(ForegroundColorSpan(getColor(R.color.muted)), headline.length + 2, length, 0)
             }
 
-            if (!compact) addView(FrameLayout(context).apply {
+            if (full) addView(FrameLayout(context).apply {
                 clipChildren = false   // the lock badge overhangs the icon's corner
                 addView(Ui.appIcon(context, iconFor(pkg), 84).apply {
                     layoutParams = FrameLayout.LayoutParams(Ui.dp(context, 84), Ui.dp(context, 84))
@@ -369,14 +377,20 @@ class BlockerService : AccessibilityService() {
                 setLineSpacing(0f, 1.05f)
                 letterSpacing = -0.01f
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
-            if (!compact) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
+            if (full) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, 16) })
+            // The wall covers a pop-up's own close button and handle (they're
+            // drawn inside its window), so say how else to close it.
+            if (look.popUp) addView(Ui.muted(context, "To close it, swipe it away in Recents.",
+                if (full) 14f else if (tiny) 11f else 13f).apply {
+                gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, if (tiny) 8 else 16) })
             // On every wall that could cover the gesture bar, so there's always a way out.
-            if (homeButton) addView(Ui.primaryButton(context, "Go to home screen", R.drawable.ic_chevron) {
+            if (look.homeButton) addView(Ui.primaryButton(context, "Go to home screen", R.drawable.ic_chevron) {
                 performGlobalAction(GLOBAL_ACTION_HOME)
             }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply {
-                topMargin = Ui.dp(context, if (compact) 16 else 36)
+                topMargin = Ui.dp(context, if (full) 36 else 16)
             })
 
             // Settle in: no fade of the wall itself (it must cover instantly).

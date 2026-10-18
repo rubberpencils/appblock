@@ -276,6 +276,37 @@ class StorageTest {
     }
 
     @Test
+    fun `wall size - full on a phone screen, compact in a split half, tiny in a small pop-up`() {
+        assertEquals(Storage.WallSize.FULL, Storage.wallSize(411, 915))
+        assertEquals(Storage.WallSize.FULL, Storage.wallSize(160, 560))
+        // Split-screen halves, portrait and landscape.
+        assertEquals(Storage.WallSize.COMPACT, Storage.wallSize(411, 440))
+        assertEquals(Storage.WallSize.COMPACT, Storage.wallSize(440, 380))
+        // Stock Android's pop-up: room for the whole headline.
+        assertEquals(Storage.WallSize.COMPACT, Storage.wallSize(220, 411))
+        // OxygenOS's pop-up on a 1080-wide phone: 324x540 px at 3x.
+        assertEquals(Storage.WallSize.TINY, Storage.wallSize(108, 180))
+        // Too narrow or too short alone is enough.
+        assertEquals(Storage.WallSize.TINY, Storage.wallSize(159, 900))
+        assertEquals(Storage.WallSize.TINY, Storage.wallSize(411, 239))
+        assertEquals(Storage.WallSize.COMPACT, Storage.wallSize(160, 240))
+    }
+
+    @Test
+    fun `pop-up - short of the screen both ways`() {
+        assertTrue(Storage.isPopUp(popup, 1080, 2400))
+        assertTrue(Storage.isPopUp(Storage.Bounds(696, 120, 1020, 660), 1080, 2400))
+        assertFalse(Storage.isPopUp(screen, 1080, 2400))
+        // Split-screen halves span the width (portrait) or the height (landscape).
+        assertFalse(Storage.isPopUp(top, 1080, 2400))
+        assertFalse(Storage.isPopUp(bottom, 1080, 2400))
+        assertFalse(Storage.isPopUp(Storage.Bounds(0, 0, 1180, 1080), 2400, 1080))
+        // Full screen above a 3-button navigation bar, or beside one in landscape.
+        assertFalse(Storage.isPopUp(Storage.Bounds(0, 0, 1080, 2274), 1080, 2400))
+        assertFalse(Storage.isPopUp(Storage.Bounds(0, 0, 2274, 1080), 2400, 1080))
+    }
+
+    @Test
     fun `plan - spent apps walled, other limited apps timed, the rest left alone`() {
         val rules = mapOf(insta to Rule(5, 120), yt to Rule(10, 60))
         val spent = setOf(insta)

@@ -13,6 +13,7 @@ import xyz.robinroy.appblock.E2e.homeScreenPackage
 import xyz.robinroy.appblock.E2e.min
 import xyz.robinroy.appblock.E2e.openApp
 import xyz.robinroy.appblock.E2e.openAsPopUp
+import xyz.robinroy.appblock.E2e.resizePopUp
 import xyz.robinroy.appblock.E2e.seedUsage
 import xyz.robinroy.appblock.E2e.shell
 import xyz.robinroy.appblock.E2e.splitScreenWith
@@ -26,6 +27,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.regex.Pattern
 
 /**
  * The core promise, end to end: the blocker service watching the real apps
@@ -48,6 +50,8 @@ class BlockingE2eTest {
     val screenshotOnFailure = E2e.ScreenshotOnFailure()
 
     private val wall = textContains("Clock is blocked")
+    // The small pop-up's wall, case and all ("Clock is blocked." ends the same).
+    private val shortWall = By.text(Pattern.compile("Blocked\\..*", Pattern.DOTALL))
 
     @Test
     fun spentBudget_wallCoversTheApp_andSendsYouHome() {
@@ -164,9 +168,29 @@ class BlockingE2eTest {
         val wallBounds = windowBounds(waitFor(wall))
         assertTrue("the wall ($wallBounds) covers more than the pop-up",
             wallBounds.width() < device.displayWidth && wallBounds.height() < device.displayHeight / 2 + 600)
+        // Its own close button is under the wall, so the wall says how to close it.
+        waitFor(text(CLOSE_POP_UP))
         // Home is right there beside it, so there's no button to go there.
         assertFalse(appears(text("Go to home screen"), timeout = 1_000))
         assertTrue("the home screen is covered", appears(By.pkg(homeScreenPackage())))
+    }
+
+    @Test
+    fun spentAppInASmallPopUp_wallSaysLess_soNothingBreaksMidWord() {
+        freshState(mapOf(CLOCK to Rule(allowMin = 1, windowMin = 120)))
+        seedUsage(CLOCK, startAgo = 11.min, endAgo = 10.min, windowMin = 120)
+
+        openAsPopUp(CLOCK)
+        // OxygenOS's pop-ups are about 110 x 180 dp; Android won't make
+        // one under 220 dp, which is still too short for the full text.
+        resizePopUp(CLOCK, widthDp = 220, heightDp = 220)
+
+        val message = waitFor(shortWall).text
+        assertTrue(message, Regex("Blocked\\.\\s+Try again in 1 hr (49|50) min\\.").matches(message))
+        assertFalse(appears(wall, timeout = 1_000))
+        val wallBounds = windowBounds(device.findObject(shortWall))
+        val hint = waitFor(text(CLOSE_POP_UP)).visibleBounds
+        assertTrue("the hint ($hint) runs out of the wall ($wallBounds)", wallBounds.contains(hint))
     }
 
     @Test
@@ -178,5 +202,9 @@ class BlockingE2eTest {
 
         waitFor(text("Clock: time left"))
         device.pressBack()
+    }
+
+    private companion object {
+        const val CLOSE_POP_UP = "To close it, swipe it away in Recents."
     }
 }

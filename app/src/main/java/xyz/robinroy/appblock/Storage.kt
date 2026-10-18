@@ -65,6 +65,7 @@ object Storage {
 
     /** A rectangle in screen pixels (Android's Rect doesn't run in unit tests). */
     data class Bounds(val left: Int, val top: Int, val right: Int, val bottom: Int) {
+        val width get() = right - left
         val height get() = bottom - top
         fun union(o: Bounds) =
             Bounds(minOf(left, o.left), minOf(top, o.top), maxOf(right, o.right), maxOf(bottom, o.bottom))
@@ -124,6 +125,28 @@ object Storage {
         val top = maxOf(app.top, statusBar)
         return if (top < app.bottom) app.copy(top = top) else app
     }
+
+    /**
+     * How much the wall says, by the size of what it covers (in dp): all of
+     * it (icon, hint, button) given the room, less in a split-screen half,
+     * and just a word and the wait in a pop-up a few fingers wide, where
+     * the app's name and "is blocked" would break mid-word.
+     */
+    enum class WallSize { FULL, COMPACT, TINY }
+
+    fun wallSize(widthDp: Int, heightDp: Int): WallSize = when {
+        widthDp < 160 || heightDp < 240 -> WallSize.TINY
+        heightDp < 560 -> WallSize.COMPACT
+        else -> WallSize.FULL
+    }
+
+    /**
+     * Whether an app's window is a pop-up: short of the screen both ways. A
+     * split-screen half still spans the screen one way, and a full-screen
+     * app beside a navigation bar the other.
+     */
+    fun isPopUp(app: Bounds, screenWidth: Int, screenHeight: Int) =
+        app.width < screenWidth && app.height < screenHeight
 
     /** What to do about the apps on screen: wall the ones whose budget is spent, time the other limited ones. */
     data class Plan(val walled: Set<String>, val timed: Set<String>)

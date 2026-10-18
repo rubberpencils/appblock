@@ -152,6 +152,18 @@ object E2e {
         check(eventually { isOnScreen(pkg) }) { "$pkg didn't open as a pop-up" }
     }
 
+    /** Resize `pkg`'s pop-up to `widthDp` x `heightDp`, in the top right corner. */
+    fun resizePopUp(pkg: String, widthDp: Int, heightDp: Int) {
+        val density = ctx.resources.displayMetrics.density
+        val right = device.displayWidth - (16 * density).toInt()
+        val top = (120 * density).toInt()
+        val width = (widthDp * density).toInt()
+        shell("am task resize ${taskId(pkg)} ${right - width} $top $right ${top + (heightDp * density).toInt()}")
+        check(eventually {
+            device.findObject(By.pkg(pkg))?.let { windowBounds(it).width() <= width + 1 } ?: false
+        }) { "$pkg's pop-up didn't resize" }
+    }
+
     /** The task `pkg` runs in. */
     private fun taskId(pkg: String): Int =
         Regex("taskId=(\\d+): ${Regex.escape(pkg)}/").find(shell("am stack list"))
