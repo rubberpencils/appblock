@@ -39,7 +39,12 @@
         </intent>
     </queries>
 
+    <!-- allowBackup: Android's Auto Backup copies the app's data (the rules,
+         the usage log, onboarding seen) to the user's Google account and
+         restores it on a new phone or a reinstall. It's the default, spelled
+         out so it stays on. -->
     <application
+        android:allowBackup="true"
         android:label="AppBlock"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
