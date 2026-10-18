@@ -64,10 +64,9 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      # A fresh emulator, cold-booted every run. No cached snapshot: booting
-      # one days old jumps the clock by days, and Android's usage-stats
-      # service can come out of that jump recording no app switches at all,
-      # so the blocker (which reads them) never sees the blocked app open.
+      # A fresh emulator, cold-booted every run. No cached snapshot: every
+      # run starts from the same clean device, with no state or clock jump
+      # carried over from an earlier one.
       - name: Run the e2e tests
         uses: reactivecircus/android-emulator-runner@v2
         with:

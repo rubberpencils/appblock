@@ -20,7 +20,7 @@ import java.util.regex.Pattern
 
 /**
  * Shared setup for the e2e tests: a clean app state with every required
- * setting granted, ways to open apps and find things on screen, and seeding
+ * setting granted (and the optional usage access), ways to open apps and find things on screen, and seeding
  * of the usage log so a test can start "5 minutes into" a budget instead of
  * waiting it out.
  *
@@ -73,7 +73,7 @@ object E2e {
     }
 
     /**
-     * Every required setting on, notifications allowed, onboarding seen, the
+     * Every required setting on, usage access and notifications allowed, onboarding seen, the
      * given rules and nothing else (no usage, no leftover block wall), the
      * blocker running, and the launcher in front.
      */
@@ -232,8 +232,9 @@ object E2e {
 
     /**
      * JUnit rule: a failing test leaves a screenshot of the screen as it
-     * was, like Playwright's, and the device log beside it (the blocker
-     * service's state is logged into it first). Gradle pulls both into
+     * was, like Playwright's, and the device log beside it (the system's
+     * accessibility state, whether the blocker is bound and which windows
+     * it sees, is logged into it first). Gradle pulls both into
      * app/build/outputs/connected_android_test_additional_output/, and CI
      * uploads them with the report.
      *

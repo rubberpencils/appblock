@@ -7,8 +7,8 @@ import android.os.PowerManager
 import android.os.Process
 import android.provider.Settings
 
-// Live state of each Storage.Requirement, shared by the home screen (buttons,
-// paused note) and the About dialog, plus the optional Usage access.
+// Live state of each Storage.Requirement, shared by the home screen (setup
+// checklist, paused note) and the About sheet, plus the optional Usage access.
 
 /** True when AppBlock's accessibility service is switched on in Settings > Accessibility. */
 fun accessibilityOn(ctx: Context): Boolean = Storage.serviceEnabled(

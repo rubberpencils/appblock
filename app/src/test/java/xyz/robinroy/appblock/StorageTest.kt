@@ -121,11 +121,11 @@ class StorageTest {
 
     @Test
     fun `home list - three states`() {
-        // Nothing blocked -> the empty hint, service on or off: on a fresh
-        // install the setup explanations live under the required buttons.
+        // Nothing blocked -> the empty hint, set up or not: on a fresh
+        // install the "Finish setup" checklist covers the required settings.
         assertEquals(Storage.HomeList.EMPTY_HINT, Storage.homeList(false, 0))
         assertEquals(Storage.HomeList.EMPTY_HINT, Storage.homeList(true, 0))
-        // Service off with rules -> "blocking is paused" note, rules kept.
+        // A required setting off, with rules -> "blocking is paused" note, rules kept.
         assertEquals(Storage.HomeList.PAUSED_NOTE, Storage.homeList(false, 3))
         // Normal operation -> the app cards.
         assertEquals(Storage.HomeList.CARDS, Storage.homeList(true, 3))

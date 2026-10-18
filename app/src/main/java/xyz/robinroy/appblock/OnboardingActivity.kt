@@ -28,7 +28,7 @@ import kotlin.math.roundToInt
 /**
  * First run: four swipeable pages that explain the idea in the order a
  * person needs it (why, how, what you'll see, what it never does). Shown
- * once, re-openable from About. The pager follows the finger one-to-one and
+ * once, on first run. The pager follows the finger one-to-one and
  * settles on release with the finger's velocity, so a flick is enough.
  */
 class OnboardingActivity : Activity() {
@@ -255,7 +255,7 @@ class OnboardingActivity : Activity() {
         return page(
             hero, "The wall", "A calm stop, not a nag.",
             "When the time is gone, a wall covers the app, even in split screen " +
-                "or a pop-up window, and points you home. With notifications on, you get a gentle note at halfway " +
+                "or a pop-up window, and shows you the way out. With notifications on, you get a gentle note at halfway " +
                 "and again near the end."
         )
     }

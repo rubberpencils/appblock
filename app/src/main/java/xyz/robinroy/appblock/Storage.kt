@@ -178,7 +178,7 @@ object Storage {
     private val WARN_THRESHOLDS = listOf(50, 90)
 
     /**
-     * Minutes for the warning notification, one decimal, truncated ("2.5",
+     * Minutes for the countdown's warning text, one decimal, truncated ("2.5",
      * "3") so it never contradicts the (also truncated) percent beside it.
      */
     fun fmtMin(ms: Long): String {
@@ -191,8 +191,8 @@ object Storage {
 
     /**
      * CARDS: every required setting on, apps blocked. EMPTY_HINT ("no apps
-     * yet"): nothing blocked — on a fresh install the required-setup
-     * explanations live under the home-screen buttons, so the list area
+     * yet"): nothing blocked — on a fresh install the "Finish setup"
+     * checklist above it covers the required settings, so the list area
      * needs no setup hint of its own. PAUSED_NOTE: a requirement is off but
      * rules exist — they're kept, blocking just isn't enforced.
      */
@@ -232,24 +232,20 @@ object Storage {
     /**
      * Everything AppBlock can't work without, as data. Each entry carries its
      * own user-facing copy, and every surface generates itself from this
-     * list: the home screen's "(required)" buttons with their why-blurbs, the
-     * "Block an app" guard sheet, the About permissions rows. Declaration
+     * list: the home screen's "Finish setup" checklist, the "Block an app"
+     * guard sheet, the About permissions rows. Declaration
      * order is fix-first priority (the blocker itself first). A future
      * requirement is one entry here plus a branch in requirementMet() (Perms.kt) and MainActivity's
      * requirementFix(); those `when`s are exhaustive, so forgetting one is a
      * compile error, not a stale screen.
      */
     enum class Requirement(
-        val title: String,     // row title in the About permissions dialog
-        val button: String,    // home-screen button label
-        val whyWord: String,   // "Why <word>?" heading on the home-screen blurb
-        val why: String,       // friendly explanation: home blurb + guard popup
+        val title: String,     // row title in the setup checklist and About permissions
+        val why: String,       // friendly explanation in the "Block an app" guard sheet
         val permsNote: String, // one-liner under the About permissions row
     ) {
         ACCESSIBILITY(
             "Accessibility",
-            "Turn on AppBlock in Accessibility (required)",
-            "accessibility",
             "That's how AppBlock sees which apps are on screen, split " +
                 "screen and pop-up windows included, and how it puts the " +
                 "wall over one whose time is up. It only looks at which app " +
@@ -257,12 +253,10 @@ object Storage {
             "Required. Sees which apps are on screen and draws the wall."),
         BATTERY(
             "Unrestricted battery",
-            "Allow background battery use (required)",
-            "battery",
             "Your phone's battery saver puts background apps to sleep, and " +
                 "a sleeping blocker can't block. This lets AppBlock stay " +
                 "awake, at a tiny battery cost. So if your phone ever " +
-                "complains that AppBlock is running in the background, " +
+                "flags AppBlock for using battery in the background, " +
                 "that's not a bug. That's the watchman staying on duty.",
             "Required. Stops the phone's battery saver from killing the blocker."),
     }

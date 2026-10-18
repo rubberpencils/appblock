@@ -298,20 +298,6 @@ object Ui {
     fun ghostButton(context: Context, label: String, danger: Boolean = false, onClick: () -> Unit) =
         Pill(context, label, if (danger) Look.DANGER else Look.GHOST, null, onClick)
 
-    /** Plain text action with a chevron: "How it works", "Replay intro". */
-    fun link(context: Context, label: String, onClick: () -> Unit) = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        isClickable = true
-        isFocusable = true
-        setPadding(0, dp(context, 12), 0, dp(context, 12))
-        addView(txt(context, label, 15f, medium = true))
-        addView(icon(context, R.drawable.ic_chevron, 16, R.color.muted).apply {
-            (layoutParams as LinearLayout.LayoutParams).marginStart = dp(context, 2)
-        })
-        setOnClickListener { onClick() }
-        press(this, 0.98f)
-    }
 
     /**
      * Grayed-out secondary action: small, muted, a chevron and nothing else.

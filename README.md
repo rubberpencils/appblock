@@ -7,8 +7,8 @@
 | ---------------------------------------- | ------------------------------------- |
 
 Pick apps and give each a budget: **allow X in any rolling Y**, in minutes, hours or
-days (say, 10 min in any 2 hrs). When the budget is spent, opening the app bounces you
-to a "blocked, try again in N min" screen.
+days (say, 10 min in any 2 hrs). When the budget is spent, opening the app puts a
+"blocked, try again in N min" wall over it.
 
 No dependencies, no network, no analytics. Everything stays on your phone.
 
@@ -23,6 +23,10 @@ down its time (with 50%/90% warnings); two limited apps side by side get one eac
 Installing the APK from GitHub on Android 13 or later? Android greys out the
 Accessibility switch for apps from outside an app store until you allow it: open
 AppBlock's App info, tap ⋮, choose "Allow restricted settings", then switch it on.
+
+Force-stopping AppBlock (App info > Force stop) switches its accessibility service
+off; that's an Android rule. Blocking pauses, rules kept, until you switch it back
+on from the checklist in AppBlock.
 
 ## Tie yourself to the mast
 
@@ -51,7 +55,7 @@ enough to check in, never enough to drown.
 
 - **Opening the app:** from the launcher, recents, widgets, share sheet, links,
   anything. The moment the app's window shows up, the block wall covers it, with
-  a button to go home.
+  a button to go home (over a pop-up, it says to swipe it away in Recents).
 - **Split screen and pop-up windows:** the wall covers just that app's window,
   so the other half of the screen, or the home screen around a pop-up, stays
   usable. Each limited app on screen uses up its own budget.
@@ -72,9 +76,12 @@ enough to check in, never enough to drown.
   costs nothing.
 - **Incoming calls in blocked apps** (WhatsApp/Telegram): the ring notification
   appears, but the full-screen incoming-call UI is the app's window. Answering
-  while the app is over budget will likely get bounced. Think twice before
+  while the app is over budget will likely get walled. Think twice before
   blocking an app you take calls on.
 - **Picture-in-picture** mini-players are on screen, so they count and get
   walled like a pop-up; entering the app to start one is blocked regardless.
+- **The notification shade and power menu:** pulling either down over a blocked
+  app lifts the wall while it's open, so the shade stays usable. The wall is back
+  the moment it closes, and a limited app keeps counting underneath.
 - A blocked app's content shown _inside another app_ (e.g. a YouTube video
   embedded in a browser) is not blocked. Only the app's own windows are.

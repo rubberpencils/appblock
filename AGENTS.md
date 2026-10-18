@@ -121,8 +121,8 @@ Google Play Protect's block. One-time phone setup: enable Developer options and
 USB debugging, then accept the USB-debugging prompt.
 
 To verify a change, open AppBlock on the phone; the permission grants and
-blocked-app rules survive an `-r` reinstall, and the blocker service restarts
-itself after the update, so no re-setup is needed.
+blocked-app rules survive an `-r` reinstall, and Android brings the blocker's
+accessibility service back after the update, so no re-setup is needed.
 
 ## Emulator loop (no phone needed)
 

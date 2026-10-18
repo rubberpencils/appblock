@@ -28,7 +28,7 @@ object Guides {
             "Opening the app, tapping its notification, or staying in it past the limit " +
                 "covers it with a wall and a button home. In split screen or a pop-up " +
                 "window, the wall covers just that app, so the rest of the screen still " +
-                "works. AppBlock sees an app the moment it opens, and checks again every " +
+                "works; a pop-up is closed from Recents. AppBlock sees an app the moment it opens, and checks again every " +
                 "few seconds while it stays on screen."),
         Point(R.drawable.ic_bell, "A countdown before the wall",
             "With notifications on, each limited app on screen gets a countdown of its " +

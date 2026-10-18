@@ -36,6 +36,7 @@ import java.util.Calendar
  *   setup incomplete  -> a checklist that fixes each permission in a tap
  *   nothing blocked   -> three quiet gray lines and a nudge to pick an app
  *   blocking          -> the count, then one flat row per app
+ *   setup off, rules  -> a note that blocking is paused, the rules kept
  * A floating "Block an app" pill is always within reach.
  */
 class MainActivity : Activity() {
