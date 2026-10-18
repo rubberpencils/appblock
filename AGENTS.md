@@ -3,7 +3,8 @@
 AppBlock is a small Android app-blocker: an accessibility service watches
 which apps are on screen (the window list, split screen and pop-ups included)
 and draws a block wall over a limited app's window once it exceeds its time
-budget. "Usage access" is optional, for screen-time stats only.
+budget, and over YouTube while Shorts is on screen if the user blocks Shorts.
+"Usage access" is optional, for screen-time stats only.
 Plain Kotlin + Gradle, no Android Studio required.
 
 ## Tests come with every change
@@ -140,6 +141,30 @@ exemption, usage access and notifications via adb, so the home list is live stra
 checking UI changes; use the phone for what the emulator can't tell you
 (haptics, OxygenOS behaviour). With both connected, the scripts target the
 phone; set `ANDROID_SERIAL=emulator-5554` to point one at the emulator.
+
+## Shorts detection rules
+
+How the blocker spots YouTube's Shorts (the player's view ids) is data, in
+`rules/rules.json`, so a YouTube redesign is fixed without an app update:
+the app bundles the rules and fetches newer ones from their `source` URL
+(this repo's raw file on `main` for now; change `source` to move hosts).
+
+- After editing `rules/rules.json`, bump its `version` and run
+  `./gradlew signRules`, which writes `rules/rules.signed.json`. The unit
+  tests fail if the two disagree. Signing needs `rules-signing-key.pem` in
+  the repo root (gitignored, only on the maintainer's machine; keep a backup:
+  without it, rules can only change with an app update that swaps the key in
+  `Storage.RULES_PUBLIC_KEY`). Agents: ask before signing.
+- The rules go live for every user once `rules/rules.signed.json` is on
+  `main`. A rule only names view ids to look for in an app whose feed the
+  user blocked; a bad one can at worst wall YouTube wrongly, and a higher
+  `version` with the old content rolls it back.
+- `scripts/youtube.sh` checks the rules against the real, current YouTube:
+  it copies YouTube off the phone onto the emulator and runs
+  `YouTubeCanaryTest`. CI's `YouTube canary` workflow does the same daily and
+  on rules changes; it's not a required check (it needs the network, and
+  YouTube changes under us), and it reads YouTube's APK from a private repo
+  release (secrets `YOUTUBE_APKS_REPO`, `YOUTUBE_APKS_TOKEN`).
 
 ## Conventions
 
