@@ -73,7 +73,7 @@ don't wait to be asked; check with `git config core.hooksPath`):
    download; `scripts/emulator.sh` creates the virtual device itself):
 
    ```sh
-   sdkmanager "emulator" "system-images;android-34;google_apis;arm64-v8a"
+   sdkmanager "emulator" "system-images;android-34;google_apis_playstore;arm64-v8a"
    ```
 
    That's the Apple-silicon image; on an Intel machine use `x86_64` here
