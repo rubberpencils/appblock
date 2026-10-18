@@ -1,0 +1,76 @@
+name: YouTube canary
+
+# Do the shipped Shorts rules (rules/rules.json) still catch the real
+# YouTube's Shorts? Kept out of CI's required checks: it needs the network
+# and a current YouTube, and YouTube changes under us, so a red run here
+# means "update the rules", not "the app is broken". Daily, on a push that
+# changes the rules, and on demand (Actions > YouTube canary > Run workflow).
+#
+# YouTube's APK is Google's and can't live in this public repo. It comes
+# from a release in a private repo: secrets YOUTUBE_APKS_REPO (owner/name)
+# and YOUTUBE_APKS_TOKEN (a token that can read it), the release holding
+# the split APKs scripts/youtube.sh copies off the phone. Without them the
+# job says so and stops.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  push:
+    branches: ["**"]
+    paths: ["rules/**"]
+  workflow_dispatch:
+
+jobs:
+  youtube-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch YouTube
+        id: youtube
+        env:
+          GH_TOKEN: ${{ secrets.YOUTUBE_APKS_TOKEN }}
+          REPO: ${{ secrets.YOUTUBE_APKS_REPO }}
+        run: |
+          if [ -z "$GH_TOKEN" ] || [ -z "$REPO" ]; then
+            echo "::warning::No YOUTUBE_APKS_REPO / YOUTUBE_APKS_TOKEN secrets: skipping the canary."
+            exit 0
+          fi
+          mkdir -p youtube
+          gh release download --repo "$REPO" --pattern "*.apk" --dir youtube
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        if: steps.youtube.outputs.ready
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.youtube.outputs.ready
+      - name: Enable KVM
+        if: steps.youtube.outputs.ready
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      # The Google Play image: its YouTube is Google-signed, so the current
+      # one installs over it.
+      - name: Run the canary
+        if: steps.youtube.outputs.ready
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis_playstore
+          arch: x86_64
+          profile: pixel_7
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            adb install-multiple -r youtube/*.apk
+            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=xyz.robinroy.appblock.YouTubeCanaryTest -Pandroid.testInstrumentationRunnerArguments.canary=true
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-canary-report
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/connected_android_test_additional_output/
