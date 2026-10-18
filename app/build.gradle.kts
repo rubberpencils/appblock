@@ -1,3 +1,8 @@
+import groovy.json.JsonOutput
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.PKCS8EncodedKeySpec
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -49,10 +54,16 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    // The Shorts-detection rules ship in the APK (rules.signed.json in its
+    // assets), so a fresh install works offline before its first fetch.
+    sourceSets["main"].assets.srcDir(rootProject.file("rules"))
 }
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    // Android's org.json is a stub off the device; this is the real thing for unit tests.
+    testImplementation("org.json:json:20240303")
     // e2e: UI Automator finds and taps things on screen across apps (the
     // block wall is drawn over another app), like Playwright for Android.
     androidTestImplementation("androidx.test:runner:1.6.2")
@@ -65,4 +76,31 @@ dependencies {
 tasks.withType<Test>().configureEach {
     inputs.file("src/main/AndroidManifest.xml")
     inputs.dir("src/main/res/xml")
+    inputs.dir(rootProject.file("rules"))
+}
+
+// Signs rules/rules.json into rules/rules.signed.json, the file the app
+// bundles and fetches: the rules as a string plus an ECDSA P-256 signature
+// over it. The private key is <repo>/rules-signing-key.pem (gitignored, on
+// the maintainer's machine only); the app checks against its public half
+// (Storage.RULES_PUBLIC_KEY). Run it after every edit to rules.json.
+tasks.register("signRules") {
+    val rules = rootProject.file("rules/rules.json")
+    val signed = rootProject.file("rules/rules.signed.json")
+    val keyFile = rootProject.file("rules-signing-key.pem")
+    doLast {
+        check(keyFile.exists()) { "No rules-signing-key.pem in the repo root: only the maintainer can sign rules" }
+        val der = Base64.getMimeDecoder().decode(
+            keyFile.readText().replace(Regex("-----[A-Z ]+-----"), ""))
+        val key = KeyFactory.getInstance("EC")
+            .generatePrivate(PKCS8EncodedKeySpec(der))
+        val json = rules.readText()
+        val sig = Signature.getInstance("SHA256withECDSA").run {
+            initSign(key)
+            update(json.toByteArray(Charsets.UTF_8))
+            Base64.getEncoder().encodeToString(sign())
+        }
+        signed.writeText("{\n  \"rules\": ${JsonOutput.toJson(json)},\n  \"sig\": ${JsonOutput.toJson(sig)}\n}\n")
+        println("Signed ${rules.name} into ${signed.name}")
+    }
 }

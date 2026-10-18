@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "version": 1,
+  "source": "https://raw.githubusercontent.com/robinroy03/appblock/main/rules/rules.signed.json",
+  "feeds": {
+    "com.google.android.youtube": [
+      {
+        "ids": ["reel_recycler", "reel_player_page_container", "reel_watch_fragment_root", "reel_watch_player"],
+        "minCover": 0.7
+      }
+    ]
+  }
+}
