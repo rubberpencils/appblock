@@ -1,13 +1,17 @@
 name: CI
 
-# Branch pushes only: a bare `push:` also fires on tags, so publishing a
-# release re-ran CI on a commit that had already passed. Docs-only pushes
-# (README, screenshots, licence, issue templates) can't break the app, so
-# they skip CI. Pull requests always run it: main requires these checks to
-# pass before a PR merges, and a skipped run would leave the PR waiting.
+# Each commit is tested once: pushes to main, and pull requests (which
+# cover a branch's pushes once its PR is open; a branch without a PR gets
+# no CI). Pushing to a branch with a PR used to run everything twice, once
+# per trigger. Pushes to main only, not tags: a bare `push:` also fires on
+# tags, so publishing a release re-ran CI on a commit that had already
+# passed. Docs-only pushes to main (README, screenshots, licence, issue
+# templates) can't break the app, so they skip CI. Pull requests always run
+# it: main requires these checks to pass before a PR merges, and a skipped
+# run would leave the PR waiting.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
     paths-ignore:
       - "**.md"
       - "public/**"

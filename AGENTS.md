@@ -86,7 +86,8 @@ don't wait to be asked; check with `git config core.hooksPath`):
    e2e tests look for (button text, a dialog), update the tests in
    `app/src/androidTest/` in the same commit.
 
-CI (`.github/workflows/ci.yml`) runs on every branch push: `test` (unit
+CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on every pull
+request (a branch gets CI once its PR is open; open a draft PR early): `test` (unit
 tests + compile), and the suite above on fresh emulators: `e2e-android-14`
 (the Google Play image, like `scripts/emulator.sh`'s) and `e2e-android-16`
 on Android 16, the version the app targets. The suite installs `fixture/`,
