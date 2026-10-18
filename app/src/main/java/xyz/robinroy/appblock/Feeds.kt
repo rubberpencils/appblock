@@ -33,6 +33,11 @@ object Feeds {
         Storage.newerRules(bundled, fetched).also { current = it }
     }
 
+    /** The e2e tests' rules (for their stand-in app), or null to go back to the real ones. */
+    fun useForTests(rules: Storage.FeedRules?) {
+        current = rules
+    }
+
     /**
      * Fetch the rules again in the background if they may be out of date
      * (Storage.shouldFetchRules), as `pkg` comes on screen at `versionCode`.

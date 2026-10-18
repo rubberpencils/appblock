@@ -79,6 +79,11 @@ tasks.withType<Test>().configureEach {
     inputs.dir(rootProject.file("rules"))
 }
 
+// The e2e tests' stand-in for YouTube (fixture/) goes on the device first.
+tasks.matching { it.name == "connectedDebugAndroidTest" }.configureEach {
+    dependsOn(":fixture:installDebug")
+}
+
 // Signs rules/rules.json into rules/rules.signed.json, the file the app
 // bundles and fetches: the rules as a string plus an ECDSA P-256 signature
 // over it. The private key is <repo>/rules-signing-key.pem (gitignored, on

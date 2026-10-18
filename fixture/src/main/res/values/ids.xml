@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The id YouTube's Shorts player has (rules/rules.json) -->
+    <item name="reel_watch_player" type="id" />
+</resources>
