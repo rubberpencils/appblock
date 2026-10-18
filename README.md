@@ -10,12 +10,19 @@ Pick apps and give each a budget: **allow X in any rolling Y**, in minutes, hour
 days (say, 10 min in any 2 hrs). When the budget is spent, opening the app puts a
 "blocked, try again in N min" wall over it.
 
-No dependencies, no network, no analytics. Everything stays on your phone.
+It can also block YouTube's Shorts outright, even with time left: switch on
+"Block YouTube Shorts" under YouTube on the home list, and a wall goes up
+whenever Shorts is on screen and comes down when you go back.
+
+No dependencies, no account, no analytics. Nothing about you leaves your phone.
+The one download is the Shorts-detection rules, a signed file from this repo
+(`rules/`), so a YouTube redesign gets fixed without an app update.
 
 The blocker is an accessibility service: Android tells it which apps are on
 screen (split screen and pop-up windows included) and lets it draw the wall over
 one whose time is up. It only looks at which app each window belongs to, never at
-what's inside. Besides switching it on in Settings > Accessibility, it needs a
+what's inside, except for YouTube's Shorts player (by its view id, no text) when
+Shorts are blocked. Besides switching it on in Settings > Accessibility, it needs a
 battery exemption so the phone doesn't put it to sleep. Usage access is optional,
 for screen-time numbers. While a limited app is on screen, a notification counts
 down its time (with 50%/90% warnings); two limited apps side by side get one each.

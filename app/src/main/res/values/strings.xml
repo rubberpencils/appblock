@@ -3,5 +3,5 @@
     <!-- Static shortcut labels must be string resources -->
     <string name="shortcut_dont_give_up">Don\'t give up!</string>
     <!-- Shown under AppBlock on the system's Accessibility settings page -->
-    <string name="blocker_service_description">AppBlock uses this to see which apps are on screen (split screen and pop-up windows included) and to put its block wall over an app whose time is up. It only looks at which app each window belongs to, never at what\'s inside it, and nothing leaves your phone.</string>
+    <string name="blocker_service_description">AppBlock uses this to see which apps are on screen (split screen and pop-up windows included) and to put its block wall over an app whose time is up. It only looks at which app each window belongs to, never at what\'s inside it, except to spot YouTube\'s Shorts player if you block Shorts. Nothing about you leaves your phone.</string>
 </resources>

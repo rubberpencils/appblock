@@ -366,7 +366,8 @@ object Storage {
             "That's how AppBlock sees which apps are on screen, split " +
                 "screen and pop-up windows included, and how it puts the " +
                 "wall over one whose time is up. It only looks at which app " +
-                "each window belongs to, never at what's inside it.",
+                "each window belongs to, never at what's inside it (except " +
+                "YouTube's Shorts player, if you block Shorts).",
             "Required. Sees which apps are on screen and draws the wall."),
         BATTERY(
             "Unrestricted battery",

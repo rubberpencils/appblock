@@ -606,8 +606,10 @@ class MainActivity : Activity() {
             "AppBlock uses Android's accessibility service to see which apps are on " +
                 "screen, split screen and pop-up windows included, and to put the " +
                 "block wall over an app whose time is up.\n\n" +
-                "It only looks at which app each window belongs to. It never reads " +
-                "what's on screen or what you type, and nothing leaves your phone.\n\n" +
+                "It only looks at which app each window belongs to (and, if you " +
+                "block YouTube Shorts, for the Shorts player). It never reads " +
+                "what's on screen or what you type, and nothing about you leaves " +
+                "your phone.\n\n" +
                 "On the next screen, find AppBlock (under Installed apps or Downloaded " +
                 "apps) and turn it on. Android will warn that it can see and control " +
                 "the screen: that's what every accessibility service is allowed, not " +
