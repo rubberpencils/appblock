@@ -70,7 +70,11 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       # A fresh emulator, cold-booted every run. No cached snapshot: every
       # run starts from the same clean device, with no state or clock jump
-      # carried over from an earlier one.
+      # carried over from an earlier one. On the Google Play image, the Play
+      # Store is switched off first: it auto-updates Google Play Services a
+      # few minutes after boot, which freezes it mid-install and stalls apps
+      # the tests open (once, "deskclock didn't open"). The tests don't use
+      # it. Android 16's image has no Play Store, so there it does nothing.
       - name: Run the e2e tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -80,7 +84,9 @@ jobs:
           profile: pixel_7
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew connectedDebugAndroidTest
+          script: |
+            if adb shell pm list packages | grep -q com.android.vending; then adb shell pm disable-user --user 0 com.android.vending; fi
+            ./gradlew connectedDebugAndroidTest
       # Which test failed and why (HTML report), plus a screenshot of the
       # screen at the moment each failing test failed and the device log.
       - name: Upload the e2e report
