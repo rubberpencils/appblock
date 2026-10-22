@@ -368,9 +368,9 @@ class MainActivity : Activity() {
                     (layoutParams as LinearLayout.LayoutParams).marginStart = Ui.dp(context, 10)
                 })
             })
-            // YouTube: its Shorts can be blocked outright, on top of the limit.
-            Storage.FEEDS[pkg]?.let { label ->
-                addView(feedSwitch(pkg, label), Ui.lp().apply {
+            // YouTube's Shorts, Instagram's Reels: blocked outright, on top of the limit.
+            Storage.FEEDS[pkg]?.let { feed ->
+                addView(feedSwitch(pkg, feed), Ui.lp().apply {
                     marginStart = Ui.dp(context, 46)
                     bottomMargin = Ui.dp(context, 6)
                 })
@@ -379,7 +379,7 @@ class MainActivity : Activity() {
     }
 
     /** "Block YouTube Shorts" and its switch, under the app's row; the whole line is the touch target. */
-    private fun feedSwitch(pkg: String, label: String): View {
+    private fun feedSwitch(pkg: String, feed: Storage.Feed): View {
         val on = pkg in Storage.loadFeedBlocks(this)
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -388,7 +388,7 @@ class MainActivity : Activity() {
             isFocusable = true
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(Ui.txt(context, label, 14f, medium = true))
+                addView(Ui.txt(context, feed.label, 14f, medium = true))
                 addView(Ui.muted(context, "Always, even with time left", 12f))
             }, Ui.lp(0).apply { weight = 1f })
             addView(Switch(context).apply {
@@ -397,7 +397,7 @@ class MainActivity : Activity() {
             })
             setOnClickListener {
                 if (on) { Storage.setFeedBlocked(this@MainActivity, pkg, false); render() }
-                else feedDisclosure(pkg, label)
+                else feedDisclosure(pkg, feed)
             }
         }
     }
@@ -407,18 +407,21 @@ class MainActivity : Activity() {
      * requires this: it's the one time AppBlock looks inside another app,
      * and the one time it uses the network.
      */
-    private fun feedDisclosure(pkg: String, label: String) {
+    private fun feedDisclosure(pkg: String, feed: Storage.Feed) {
         val app = labelFor(pkg)
-        Sheet.confirm(this, "$label?",
-            "AppBlock will put a wall over $app whenever Shorts is on screen, even " +
-                "with time left, and take it down as soon as you go back.\n\n" +
-                "To spot Shorts, it looks inside $app for the Shorts player, by its " +
+        val name = feed.name
+        Sheet.confirm(this, "${feed.label}?",
+            "AppBlock will put a wall over $app whenever $name is on screen, even " +
+                "with time left, and take it down as soon as you go back. However " +
+                "it opens (a tab, a link, a message), the wall goes up; thumbnails " +
+                "stay.\n\n" +
+                "To spot $name, it looks inside $app for the $name player, by its " +
                 "name in $app's code. It reads no text and nothing about the " +
                 "videos, and nothing leaves your phone.\n\n" +
                 "$app changes often, so while $app is open AppBlock checks every " +
-                "few hours for updated Shorts rules on its GitHub page. That " +
+                "few hours for updated rules at appblock.robinroy.xyz. That " +
                 "download sends nothing about you.",
-            yes = "Block Shorts", no = "Not now") {
+            yes = "Block $name", no = "Not now") {
             Storage.setFeedBlocked(this, pkg, true)
             render()
         }
@@ -607,9 +610,9 @@ class MainActivity : Activity() {
                 "screen, split screen and pop-up windows included, and to put the " +
                 "block wall over an app whose time is up.\n\n" +
                 "It only looks at which app each window belongs to (and, if you " +
-                "block YouTube Shorts, for the Shorts player). It never reads " +
-                "what's on screen or what you type, and nothing about you leaves " +
-                "your phone.\n\n" +
+                "block YouTube Shorts or Instagram Reels, for their player). It " +
+                "never reads what's on screen or what you type, and nothing about " +
+                "you leaves your phone.\n\n" +
                 "On the next screen, find AppBlock (under Installed apps or Downloaded " +
                 "apps) and turn it on. Android will warn that it can see and control " +
                 "the screen: that's what every accessibility service is allowed, not " +

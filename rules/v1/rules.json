@@ -1,9 +1,15 @@
 {
-  "updated": "2026-10-22T17:49:40Z",
+  "updated": "2026-10-22T19:08:26Z",
   "feeds": {
     "com.google.android.youtube": [
       {
         "ids": ["reel_recycler", "reel_player_page_container", "reel_watch_fragment_root", "reel_watch_player"],
+        "minCover": 0.7
+      }
+    ],
+    "com.instagram.android": [
+      {
+        "ids": ["clips_viewer_view_pager", "clips_video_container"],
         "minCover": 0.7
       }
     ]

@@ -4,6 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
 import xyz.robinroy.appblock.E2e.FIXTURE
+import xyz.robinroy.appblock.E2e.INSTAGRAM
 import xyz.robinroy.appblock.E2e.YOUTUBE
 import xyz.robinroy.appblock.E2e.appears
 import xyz.robinroy.appblock.E2e.ctx
@@ -22,10 +23,13 @@ import org.junit.runner.RunWith
 import java.time.Instant
 
 /**
- * Blocking a feed (YouTube's Shorts): the switch on the home list, and the
- * wall that goes up while the feed is on screen. The wall is tested on the
- * fixture app (fixture/), which has the Shorts player's view id, under
- * rules naming it; the real YouTube is covered by the youtube-canary job.
+ * Blocking a feed (YouTube's Shorts, Instagram's Reels): the switch on the
+ * home list, and the wall that goes up while the feed is on screen. The
+ * wall is tested on the fixture app (fixture/), which plays YouTube or
+ * Instagram with their players' view ids, under rules naming it; the real
+ * YouTube is covered by the youtube-canary job. (The emulators have no
+ * Instagram, and the real one needs an account: the switch's flow is the
+ * same for both apps, tested here with YouTube.)
  */
 @RunWith(AndroidJUnit4::class)
 class FeedE2eTest {
@@ -43,9 +47,25 @@ class FeedE2eTest {
     private val fixtureRules = Storage.FeedRules(updated = Instant.MAX,
         feeds = mapOf(FIXTURE to listOf(Storage.FeedRule(listOf("reel_watch_player"), 0.7f))))
 
+    /** The fixture plays YouTube: its Shorts player, YouTube's id. */
     private fun blockFixtureFeed() {
         freshState()
-        Feeds.useForTests(fixtureRules)
+        Feeds.useForTests(fixtureRules, mapOf(FIXTURE to Storage.FEEDS.getValue(YOUTUBE)))
+        Storage.setFeedBlocked(ctx, FIXTURE, true)
+    }
+
+    private val reelsWall = E2e.textContains("Reels are blocked")
+
+    /**
+     * The fixture plays Instagram, under the shipped Instagram rule itself
+     * (the APK's rules/v1): the test fails if that rule stops matching
+     * Instagram's Reels player ids, which the fixture has.
+     */
+    private fun blockFixtureReels() {
+        freshState()
+        val shipped = Feeds.rules(ctx)!!.feeds.getValue(INSTAGRAM)
+        Feeds.useForTests(Storage.FeedRules(updated = Instant.MAX, feeds = mapOf(FIXTURE to shipped)),
+            mapOf(FIXTURE to Storage.FEEDS.getValue(INSTAGRAM)))
         Storage.setFeedBlocked(ctx, FIXTURE, true)
     }
 
@@ -94,6 +114,34 @@ class FeedE2eTest {
         waitFor(text("Go back")).click()
         assertTrue("wall stayed up", device.wait(Until.gone(feedWall), E2e.WAIT))
         assertTrue("didn't go back to the home screen", appears(text("Fixture home")))
+    }
+
+    @Test
+    fun reelsOnScreen_wallsTheApp_andGoBackLeavesIt() {
+        blockFixtureReels()
+        openApp(FIXTURE)
+
+        // A reel's tile (Explore, a profile's grid) is a thumbnail, not Reels.
+        waitFor(text("Fixture home"))
+        assertFalse("walled a reel's tile", appears(reelsWall, timeout = 3_000))
+
+        waitFor(text("Open reels")).click()
+        assertTrue("Reels not walled", appears(reelsWall))
+
+        waitFor(text("Go back")).click()
+        assertTrue("wall stayed up", device.wait(Until.gone(reelsWall), E2e.WAIT))
+        assertTrue("didn't go back to the home screen", appears(text("Fixture home")))
+    }
+
+    @Test
+    fun reelFromALink_isWalledToo() {
+        blockFixtureReels()
+        // A reel link (from a browser, a chat, a DM) opens straight into Reels.
+        E2e.shell("am start -a android.intent.action.VIEW -d https://fixture.appblock.invalid/reel/abc -p $FIXTURE")
+        assertTrue("a reel from a link not walled", appears(reelsWall))
+
+        waitFor(text("Go back")).click()
+        assertTrue("wall stayed up", device.wait(Until.gone(reelsWall), E2e.WAIT))
     }
 
     @Test

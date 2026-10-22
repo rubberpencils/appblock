@@ -41,7 +41,9 @@ object E2e {
     const val PHONE = "com.google.android.dialer"   // opens without a Google sign-in (Calendar on 16 doesn't)
     // On the Google images too, and the app whose Shorts can be blocked.
     const val YOUTUBE = "com.google.android.youtube"
-    // The e2e tests' stand-in for YouTube (fixture/), with its Shorts player's view id.
+    // Not on the emulators (and it needs an account): the fixture plays it.
+    const val INSTAGRAM = "com.instagram.android"
+    // The e2e tests' stand-in for YouTube and Instagram (fixture/), with their players' view ids.
     const val FIXTURE = "xyz.robinroy.appblock.fixture"
 
     const val WAIT = 10_000L

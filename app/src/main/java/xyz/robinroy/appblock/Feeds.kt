@@ -8,8 +8,8 @@ import javax.net.ssl.HttpsURLConnection
 import kotlin.concurrent.thread
 
 /**
- * The Shorts-detection rules on the phone: the newest of the copy bundled
- * in the APK and the last one fetched. Fetching is a plain download of the
+ * The rules for spotting Shorts and Reels on the phone: the newest of the
+ * copy bundled in the APK and the last one fetched. Fetching is a plain download of the
  * signed rules file from appblock.robinroy.xyz (GitHub Pages, deployed from
  * this repo's rules/; the host can move behind that name). A file whose
  * signature doesn't check out is thrown away. Nothing about the phone or
@@ -34,9 +34,18 @@ object Feeds {
         Storage.newerRules(bundled, fetched).also { current = it }
     }
 
-    /** The e2e tests' rules (for their stand-in app), or null to go back to the real ones. */
-    fun useForTests(rules: Storage.FeedRules?) {
+    @Volatile private var testFeeds: Map<String, Storage.Feed>? = null
+
+    /** The feed `pkg` has, if its feed can be blocked: YouTube's Shorts, Instagram's Reels. */
+    fun feed(pkg: String): Storage.Feed? = (testFeeds ?: Storage.FEEDS)[pkg]
+
+    /**
+     * The e2e tests' rules and feeds (for their stand-in app, which plays
+     * YouTube or Instagram), or null to go back to the real ones.
+     */
+    fun useForTests(rules: Storage.FeedRules?, feeds: Map<String, Storage.Feed>? = null) {
         current = rules
+        testFeeds = feeds
     }
 
     /**

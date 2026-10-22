@@ -8,5 +8,14 @@
             </intent-filter>
         </activity>
         <activity android:name=".FeedActivity" android:exported="false" />
+        <!-- A reel link opens straight into Reels, like instagram.com/reel/... -->
+        <activity android:name=".ReelsActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="fixture.appblock.invalid" android:pathPrefix="/reel/" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

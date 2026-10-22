@@ -149,16 +149,29 @@ object Storage {
     fun isPopUp(app: Bounds, screenWidth: Int, screenHeight: Int) =
         app.width < screenWidth && app.height < screenHeight
 
-    // ---- short-video feeds (YouTube Shorts): blocked outright, always ----
+    // ---- short-video feeds (YouTube Shorts, Instagram Reels): blocked outright, always ----
     //
-    // The apps whose feed can be blocked, and how to spot the feed in each,
-    // come from a signed rules file (rules/v1/rules.json in the repo):
-    // bundled in the APK, and fetched again from appblock.robinroy.xyz so a
-    // YouTube redesign is fixed without an app update. A rule names the
-    // player's view ids, never text, so it works in every language.
+    // The apps whose feed can be blocked are FEEDS, below. How to spot the
+    // feed in each comes from a signed rules file (rules/v1/rules.json in
+    // the repo): bundled in the APK, and fetched again from
+    // appblock.robinroy.xyz so a redesign is fixed without an app update. A
+    // rule names the player's view ids, never text, so it works in every
+    // language. However the player opened (a tab, a link, a DM, a tap on a
+    // thumbnail), the wall goes up while it fills the app's window; a
+    // thumbnail or a small preview never does.
 
-    /** The apps with a feed to block, and the switch's label on the home list. */
-    val FEEDS = mapOf("com.google.android.youtube" to "Block YouTube Shorts")
+    /** An app's short-video feed: what it's called, and its switch's label on the home list. */
+    data class Feed(val name: String, val label: String)
+
+    /** The apps with a feed to block. A rule for any other app does nothing. */
+    val FEEDS = mapOf(
+        "com.google.android.youtube" to Feed("Shorts", "Block YouTube Shorts"),
+        "com.instagram.android" to Feed("Reels", "Block Instagram Reels"),
+    )
+
+    /** The feed wall's headline: "Reels are blocked.", or just "No Reels." on a wall a few fingers wide. */
+    fun feedHeadline(feed: Feed, tiny: Boolean): String =
+        if (tiny) "No ${feed.name}." else "${feed.name} are blocked."
 
     /**
      * One way to recognise a feed's player: a view with one of `ids`, shown,
@@ -287,7 +300,7 @@ object Storage {
         return Plan(walled, timed)
     }
 
-    /** Why a wall is up: the app's time is spent, or its feed (Shorts) is on screen. */
+    /** Why a wall is up: the app's time is spent, or its feed (Shorts, Reels) is on screen. */
     enum class WallKind { SPENT, FEED }
 
     /** The walls to put up. A spent app is walled whole, whatever it's showing. */
@@ -383,7 +396,8 @@ object Storage {
                 "screen and pop-up windows included, and how it puts the " +
                 "wall over one whose time is up. It only looks at which app " +
                 "each window belongs to, never at what's inside it (except " +
-                "YouTube's Shorts player, if you block Shorts).",
+                "for YouTube's Shorts player or Instagram's Reels player, if " +
+                "you block them).",
             "Required. Sees which apps are on screen and draws the wall."),
         BATTERY(
             "Unrestricted battery",

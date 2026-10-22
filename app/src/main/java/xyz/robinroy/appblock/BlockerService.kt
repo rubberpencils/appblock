@@ -39,8 +39,8 @@ import android.widget.TextView
  * one in front: both halves of a split screen, a floating pop-up window.
  * The service reads only that (which app, where), never what's inside,
  * except in an app whose short-video feed the user blocked (YouTube's
- * Shorts): there it looks for the feed's player by its view id, nothing
- * else, and walls the app while one is on screen.
+ * Shorts, Instagram's Reels): there it looks for the feed's player by its
+ * view id, nothing else, and walls the app while one is on screen.
  *
  * Each limited app on screen gets its own session and its own countdown
  * notification, ticked every few seconds so a session is cut off the moment
@@ -75,9 +75,9 @@ class BlockerService : AccessibilityService() {
     private val feedsShown = mutableSetOf<String>()      // feed apps showing their feed (for the log)
     private var refreshQueued = false
 
-    /** What a wall shows; when it changes, the wall is built anew. */
-    private data class Look(val kind: Storage.WallKind, val size: Storage.WallSize, val popUp: Boolean,
-                            val homeButton: Boolean)
+    /** What a wall shows (`feed`: the feed it's over, on a FEED wall); when it changes, the wall is built anew. */
+    private data class Look(val kind: Storage.WallKind, val feed: Storage.Feed?, val size: Storage.WallSize,
+                            val popUp: Boolean, val homeButton: Boolean)
     private class Wall(val view: View, var bounds: Storage.Bounds, val look: Look)
     private data class Timer(val deadline: Long, val level: Int)
 
@@ -179,7 +179,8 @@ class BlockerService : AccessibilityService() {
         // Home already showing beside the app (it's in a pop-up over it): a
         // "Go to home screen" button would do nothing.
         val homeButton = homePackage() !in onScreen
-        val feedApps = Storage.loadFeedBlocks(this).filter { it in onScreen && it !in plan.walled }.toSet()
+        val feedApps = Storage.loadFeedBlocks(this)
+            .filter { it in onScreen && it !in plan.walled && Feeds.feed(it) != null }.toSet()
         watchFeeds(feedApps)
         val kinds = Storage.wallKinds(plan.walled, feedApps.filter(::feedShowing).toSet())
         for (pkg in walls.keys.toList()) if (stepAside || pkg !in kinds) hideWall(pkg)
@@ -188,7 +189,8 @@ class BlockerService : AccessibilityService() {
             val bounds = Storage.wallBounds(app, windows, screen.y)
             val popUp = Storage.isPopUp(app, screen.x, screen.y)
             // A pop-up leaves the rest of the screen usable: no button needed there.
-            val look = Look(kind, Storage.wallSize(toDp(bounds.width), toDp(bounds.height)), popUp,
+            val feed = if (kind == Storage.WallKind.FEED) Feeds.feed(pkg) else null
+            val look = Look(kind, feed, Storage.wallSize(toDp(bounds.width), toDp(bounds.height)), popUp,
                 homeButton && !popUp)
             showWall(pkg, rules[pkg], bounds, look)
         }
@@ -235,7 +237,7 @@ class BlockerService : AccessibilityService() {
         serviceInfo = info
     }
 
-    /** Whether `pkg` is showing its feed (Shorts): one of its rules' player views fills its window. */
+    /** Whether `pkg` is showing its feed (Shorts, Reels): one of its rules' player views fills its window. */
     private fun feedShowing(pkg: String): Boolean {
         val rules = Feeds.rules(this) ?: return false
         val version = versions.getOrPut(pkg) {
@@ -407,7 +409,7 @@ class BlockerService : AccessibilityService() {
     private fun wallView(pkg: String, rule: Rule?, look: Look): View {
         val full = look.size == Storage.WallSize.FULL
         val tiny = look.size == Storage.WallSize.TINY
-        val feed = look.kind == Storage.WallKind.FEED
+        val feed = look.feed
         val label = labelFor(pkg)
 
         return LinearLayout(this).apply {
@@ -421,9 +423,9 @@ class BlockerService : AccessibilityService() {
             // One TextView carries both lines (the e2e tests read it whole);
             // spans give the headline weight and the wait time a calmer tone.
             // A pop-up a few fingers wide fits one short word: it's plain which app it's over.
-            val headline = if (feed) { if (tiny) "No Shorts." else "Shorts are blocked." }
+            val headline = if (feed != null) Storage.feedHeadline(feed, tiny)
                 else if (tiny) "Blocked." else "$label is blocked."
-            val wait = if (feed) "The rest of $label is still open."
+            val wait = if (feed != null) "The rest of $label is still open."
                 else "Try again in ${Storage.fmtSpan(Storage.ceilMin(Storage.msUntilUnblocked(this@BlockerService, pkg, rule!!)).toInt())}."
             val message = SpannableString("$headline\n\n$wait").apply {
                 setSpan(AbsoluteSizeSpan(if (full) 40 else if (tiny) 22 else 28, true), 0, headline.length + 1, 0)
@@ -463,18 +465,18 @@ class BlockerService : AccessibilityService() {
                 setLineSpacing(0f, 1.05f)
                 letterSpacing = -0.01f
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
-            if (full && !feed) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
+            if (full && feed == null) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, 16) })
             // The wall covers a pop-up's own close button and handle (they're
-            // drawn inside its window), so say how else to close it. Shorts
-            // has the back button below instead.
-            if (look.popUp && !feed) addView(Ui.muted(context, "To close it, swipe it away in Recents.",
+            // drawn inside its window), so say how else to close it. A feed
+            // wall has the back button below instead.
+            if (look.popUp && feed == null) addView(Ui.muted(context, "To close it, swipe it away in Recents.",
                 if (full) 14f else if (tiny) 11f else 13f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, if (tiny) 8 else 16) })
-            // Out of Shorts, into the rest of the app: back, as if the user swiped it.
-            if (feed) addView(Ui.primaryButton(context, "Go back") {
+            // Out of Shorts or Reels, into the rest of the app: back, as if the user swiped it.
+            if (feed != null) addView(Ui.primaryButton(context, "Go back") {
                 performGlobalAction(GLOBAL_ACTION_BACK)
             }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply {
                 topMargin = Ui.dp(context, if (full) 36 else 16)

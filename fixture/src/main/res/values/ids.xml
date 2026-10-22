@@ -2,4 +2,7 @@
 <resources>
     <!-- The id YouTube's Shorts player has (rules/v1/rules.json) -->
     <item name="reel_watch_player" type="id" />
+    <!-- The ids Instagram's Reels player has (rules/v1/rules.json) -->
+    <item name="clips_viewer_view_pager" type="id" />
+    <item name="clips_video_container" type="id" />
 </resources>

@@ -3,9 +3,9 @@
      (no clicks, no typing), and the window list with each window's app,
      which needs "retrieve window content". It reads each window's app, type
      and position. Only in an app whose feed the user blocked (YouTube's
-     Shorts) does it look inside, for the feed's player by its view id (hence
-     the view ids), and only then does it switch on content changes too, in
-     code (BlockerService.watchFeeds). -->
+     Shorts, Instagram's Reels) does it look inside, for the feed's player
+     by its view id (hence the view ids), and only then does it switch on
+     content changes too, in code (BlockerService.watchFeeds). -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
     android:accessibilityFeedbackType="feedbackGeneric"

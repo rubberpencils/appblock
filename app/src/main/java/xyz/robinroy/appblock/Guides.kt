@@ -37,7 +37,8 @@ object Guides {
             "Notifications still arrive, and replies from the notification still work. " +
                 "Messages, downloads, and audio keep running. Only time on screen counts. " +
                 "Nothing about you is sent off the phone: no account, no analytics. The " +
-                "one download is the rules for spotting YouTube's Shorts.")
+                "one download is the rules for spotting YouTube's Shorts and " +
+                "Instagram's Reels.")
     )
 
     /** The page itself, for pushing onto an open sheet. */

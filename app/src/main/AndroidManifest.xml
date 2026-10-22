@@ -22,9 +22,9 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- Fetches the signed Shorts-detection rules (rules/v1/rules.signed.json
-         in the repo, from appblock.robinroy.xyz) so a YouTube redesign is
-         fixed without an app update. A plain download: nothing about the
+    <!-- Fetches the signed rules for spotting Shorts and Reels
+         (rules/v1/rules.signed.json in the repo, from appblock.robinroy.xyz)
+         so a redesign is fixed without an app update. A plain download: nothing about the
          phone or its user is sent. -->
     <uses-permission android:name="android.permission.INTERNET" />
 

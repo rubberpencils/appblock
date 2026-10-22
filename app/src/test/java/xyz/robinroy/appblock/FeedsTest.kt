@@ -18,13 +18,14 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * Blocking a feed (YouTube's Shorts): reading and trusting the rules file,
+ * Blocking a feed (YouTube's Shorts, Instagram's Reels): reading and trusting the rules file,
  * and deciding from the views found whether the feed is on screen.
  * (Unit tests run with the module dir, app/, as cwd.)
  */
 class FeedsTest {
 
     private val yt = "com.google.android.youtube"
+    private val ig = "com.instagram.android"
     private val window = Storage.Bounds(0, 0, 1080, 2400)
 
     private fun rules(updated: String = "2026-10-22T17:30:00Z",
@@ -129,6 +130,20 @@ class FeedsTest {
     }
 
     @Test
+    fun `the shipped rules spot Instagram's Reels player, never its Stories`() {
+        val shipped = Storage.openSignedRules(File("../rules/${Storage.RULES_FORMAT}/rules.signed.json").readText())!!
+        val ids = shipped.feeds[ig].orEmpty().flatMap { it.ids }
+        // Reels' player is "clips" in Instagram's code: the Reels tab, a reel
+        // from Explore, a DM or a link all open the same one.
+        assertTrue("no Reels player in the rules: $ids", "clips_video_container" in ids)
+        // In Instagram's code a "reel" is a Story (reels_tray_container is
+        // the Stories row): a rule naming one would wall Stories.
+        assertTrue("an Instagram rule names Stories: $ids", ids.none { it.startsWith("reel") })
+        // A thumbnail or a preview must never wall it: only a player filling the window.
+        assertTrue(shipped.feeds[ig]!!.all { it.minCover >= 0.5f })
+    }
+
+    @Test
     fun `the rules come over HTTPS only, never plain HTTP`() {
         assertTrue(Storage.RULES_URL.startsWith("https://"))
         assertTrue("fetched as the format this build reads",
@@ -195,6 +210,21 @@ class FeedsTest {
     }
 
     // ---- which wall ----
+
+    @Test
+    fun `feeds - YouTube's Shorts and Instagram's Reels, each with its switch`() {
+        assertEquals(Storage.Feed("Shorts", "Block YouTube Shorts"), Storage.FEEDS[yt])
+        assertEquals(Storage.Feed("Reels", "Block Instagram Reels"), Storage.FEEDS[ig])
+        // The apps AppBlock looks inside: adding one is a privacy change, made on purpose.
+        assertEquals(setOf(yt, ig), Storage.FEEDS.keys)
+    }
+
+    @Test
+    fun `feed wall - says which feed, shorter on a tiny wall`() {
+        assertEquals("Shorts are blocked.", Storage.feedHeadline(Storage.FEEDS.getValue(yt), tiny = false))
+        assertEquals("Reels are blocked.", Storage.feedHeadline(Storage.FEEDS.getValue(ig), tiny = false))
+        assertEquals("No Reels.", Storage.feedHeadline(Storage.FEEDS.getValue(ig), tiny = true))
+    }
 
     @Test
     fun `walls - a spent app is walled whole, even showing its feed`() {
