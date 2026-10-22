@@ -1,0 +1,54 @@
+name: Publish rules
+
+# Publishes the signed Shorts-detection rules to GitHub Pages, served at
+# https://appblock.robinroy.xyz/<format>/rules.signed.json (rules/v1/ in
+# the repo is /v1/ there), where the app fetches them. It only publishes:
+# signing happens on a key holder's machine (./gradlew signRules), so a
+# push can't make rules the app accepts, only copy ones already signed.
+# A Pages deploy replaces the whole site, so every format is published
+# each time. On a push to main that touches the rules, and on demand
+# (Actions > Publish rules > Run workflow).
+on:
+  push:
+    branches: [main]
+    paths: ["rules/**", ".github/workflows/rules.yml"]
+  workflow_dispatch:
+
+# One deploy at a time, and a running one is never cut off halfway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      # FeedsTest checks the signed rules against the app's public key and
+      # their rules.json: a file the app would throw away is never published.
+      - run: ./gradlew testDebugUnitTest
+      # Only the signed files: rules/v1/rules.signed.json -> site/v1/rules.signed.json.
+      - name: Build the site
+        run: |
+          for f in rules/*/rules.signed.json; do
+            mkdir -p "site/$(basename "$(dirname "$f")")"
+            cp "$f" "site/$(basename "$(dirname "$f")")/"
+          done
+          find site -type f
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
