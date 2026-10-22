@@ -36,7 +36,8 @@ object Guides {
         Point(R.drawable.ic_shield, "What it leaves alone",
             "Notifications still arrive, and replies from the notification still work. " +
                 "Messages, downloads, and audio keep running. Only time on screen counts. " +
-                "Nothing is sent off the phone: no account, no network, no analytics.")
+                "Nothing about you is sent off the phone: no account, no analytics. The " +
+                "one download is the rules for spotting YouTube's Shorts.")
     )
 
     /** The page itself, for pushing onto an open sheet. */

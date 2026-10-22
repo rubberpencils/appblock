@@ -17,3 +17,6 @@ keystore.properties
 
 # Play Store upload bundles (./gradlew bundleRelease)
 *.aab
+
+# Signs rules/v1/rules.json (./gradlew signRules) — never commit it
+rules-signing-key.pem

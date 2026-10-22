@@ -28,6 +28,7 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import java.util.Calendar
 
@@ -367,6 +368,59 @@ class MainActivity : Activity() {
                     (layoutParams as LinearLayout.LayoutParams).marginStart = Ui.dp(context, 10)
                 })
             })
+            // YouTube: its Shorts can be blocked outright, on top of the limit.
+            Storage.FEEDS[pkg]?.let { label ->
+                addView(feedSwitch(pkg, label), Ui.lp().apply {
+                    marginStart = Ui.dp(context, 46)
+                    bottomMargin = Ui.dp(context, 6)
+                })
+            }
+        }
+    }
+
+    /** "Block YouTube Shorts" and its switch, under the app's row; the whole line is the touch target. */
+    private fun feedSwitch(pkg: String, label: String): View {
+        val on = pkg in Storage.loadFeedBlocks(this)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(Ui.txt(context, label, 14f, medium = true))
+                addView(Ui.muted(context, "Always, even with time left", 12f))
+            }, Ui.lp(0).apply { weight = 1f })
+            addView(Switch(context).apply {
+                isChecked = on
+                isClickable = false   // the line takes the tap
+            })
+            setOnClickListener {
+                if (on) { Storage.setFeedBlocked(this@MainActivity, pkg, false); render() }
+                else feedDisclosure(pkg, label)
+            }
+        }
+    }
+
+    /**
+     * What blocking a feed means and what it looks at, before it's on. Play
+     * requires this: it's the one time AppBlock looks inside another app,
+     * and the one time it uses the network.
+     */
+    private fun feedDisclosure(pkg: String, label: String) {
+        val app = labelFor(pkg)
+        Sheet.confirm(this, "$label?",
+            "AppBlock will put a wall over $app whenever Shorts is on screen, even " +
+                "with time left, and take it down as soon as you go back.\n\n" +
+                "To spot Shorts, it looks inside $app for the Shorts player, by its " +
+                "name in $app's code. It reads no text and nothing about the " +
+                "videos, and nothing leaves your phone.\n\n" +
+                "$app changes often, so while $app is open AppBlock checks every " +
+                "few hours for updated Shorts rules on its GitHub page. That " +
+                "download sends nothing about you.",
+            yes = "Block Shorts", no = "Not now") {
+            Storage.setFeedBlocked(this, pkg, true)
+            render()
         }
     }
 
@@ -452,7 +506,7 @@ class MainActivity : Activity() {
         val links = Ui.muted(this, "", 13f).apply {
             gravity = Gravity.CENTER
             text = Html.fromHtml(
-                "<a href=\"https://github.com/robinroy03/appblock\">Open source</a> under MIT. " +
+                "<a href=\"https://github.com/rubberpencils/appblock\">Open source</a> under MIT. " +
                     "Feedback? <a href=\"mailto:support@robinroy.xyz\">Email me</a>. " +
                     "Made by <a href=\"https://x.com/_RobinRoy\">robin</a>.",
                 Html.FROM_HTML_MODE_LEGACY)
@@ -552,8 +606,10 @@ class MainActivity : Activity() {
             "AppBlock uses Android's accessibility service to see which apps are on " +
                 "screen, split screen and pop-up windows included, and to put the " +
                 "block wall over an app whose time is up.\n\n" +
-                "It only looks at which app each window belongs to. It never reads " +
-                "what's on screen or what you type, and nothing leaves your phone.\n\n" +
+                "It only looks at which app each window belongs to (and, if you " +
+                "block YouTube Shorts, for the Shorts player). It never reads " +
+                "what's on screen or what you type, and nothing about you leaves " +
+                "your phone.\n\n" +
                 "On the next screen, find AppBlock (under Installed apps or Downloaded " +
                 "apps) and turn it on. Android will warn that it can see and control " +
                 "the screen: that's what every accessibility service is allowed, not " +

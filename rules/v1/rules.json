@@ -1,0 +1,11 @@
+{
+  "updated": "2026-10-22T17:49:40Z",
+  "feeds": {
+    "com.google.android.youtube": [
+      {
+        "ids": ["reel_recycler", "reel_player_page_container", "reel_watch_fragment_root", "reel_watch_player"],
+        "minCover": 0.7
+      }
+    ]
+  }
+}

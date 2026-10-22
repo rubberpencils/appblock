@@ -39,6 +39,10 @@ object E2e {
     // Stock apps on the emulator images (local and CI) used as "blocked apps".
     const val CLOCK = "com.google.android.deskclock"
     const val PHONE = "com.google.android.dialer"   // opens without a Google sign-in (Calendar on 16 doesn't)
+    // On the Google images too, and the app whose Shorts can be blocked.
+    const val YOUTUBE = "com.google.android.youtube"
+    // The e2e tests' stand-in for YouTube (fixture/), with its Shorts player's view id.
+    const val FIXTURE = "xyz.robinroy.appblock.fixture"
 
     const val WAIT = 10_000L
 
@@ -100,6 +104,7 @@ object E2e {
         ctx.getSharedPreferences("appblock", Context.MODE_PRIVATE).edit().clear().commit()
         Storage.setOnboardingSeen(ctx)
         Storage.saveRules(ctx, rules)
+        Feeds.useForTests(null)
         setBlocker(true)
         openHome()
         device.pressHome()

@@ -13,6 +13,7 @@ dependencyResolutionManagement {
 }
 rootProject.name = "appblock"
 include(":app")
+include(":fixture")   // a stand-in for YouTube in the e2e tests
 
 // Turn on the repo's git hooks (.githooks/: the pre-commit test run) in every
 // clone that builds, like husky does for npm projects. Git never enables

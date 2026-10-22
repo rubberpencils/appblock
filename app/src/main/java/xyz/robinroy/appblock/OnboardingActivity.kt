@@ -266,7 +266,7 @@ class OnboardingActivity : Activity() {
         val facts = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(Ui.dp(context, 18), Ui.dp(context, 8), Ui.dp(context, 18), Ui.dp(context, 8))
-            addView(fact(R.drawable.ic_shield, "Stays on your phone", "No account, no network, no analytics."))
+            addView(fact(R.drawable.ic_shield, "Stays on your phone", "No account, no analytics, nothing about you sent."))
             addView(fact(R.drawable.ic_bell, "Leaves messages alone", "Notifications and downloads keep running."))
             addView(fact(R.drawable.ic_clock, "Counts screen time only", "Just time you spend in the app."))
         }

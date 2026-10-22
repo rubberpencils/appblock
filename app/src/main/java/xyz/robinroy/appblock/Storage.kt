@@ -3,6 +3,7 @@ package xyz.robinroy.appblock
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
 
 // A blocking rule: "allow `allowMin` minutes of use per rolling `windowMin` minutes".
 data class Rule(val allowMin: Int, val windowMin: Int)
@@ -148,6 +149,131 @@ object Storage {
     fun isPopUp(app: Bounds, screenWidth: Int, screenHeight: Int) =
         app.width < screenWidth && app.height < screenHeight
 
+    // ---- short-video feeds (YouTube Shorts): blocked outright, always ----
+    //
+    // The apps whose feed can be blocked, and how to spot the feed in each,
+    // come from a signed rules file (rules/v1/rules.json in the repo):
+    // bundled in the APK, and fetched again from appblock.robinroy.xyz so a
+    // YouTube redesign is fixed without an app update. A rule names the
+    // player's view ids, never text, so it works in every language.
+
+    /** The apps with a feed to block, and the switch's label on the home list. */
+    val FEEDS = mapOf("com.google.android.youtube" to "Block YouTube Shorts")
+
+    /**
+     * One way to recognise a feed's player: a view with one of `ids`, shown,
+     * and covering at least `minCover` of the app window's height (the
+     * Shorts shelf on YouTube's home tab has a thumbnail, not a player).
+     * `minVersion`/`maxVersion` limit it to those app versionCodes.
+     */
+    data class FeedRule(val ids: List<String>, val minCover: Float,
+                        val minVersion: Long? = null, val maxVersion: Long? = null)
+
+    /**
+     * The rules file: when it was signed (`updated`, UTC; the newer file
+     * wins), and the feeds. Its format is the `v1` in its path: a build
+     * fetches only the format it reads.
+     */
+    data class FeedRules(val updated: Instant, val feeds: Map<String, List<FeedRule>>)
+
+    /**
+     * The rules format this build reads: rules/v1/ in the repo, v1/ in the
+     * APK's assets and on the site. A new format gets a new path (v2/), and
+     * the builds that read it fetch that instead.
+     */
+    const val RULES_FORMAT = "v1"
+
+    /** Where the rules are fetched from: this repo's GitHub Pages, over HTTPS only. */
+    const val RULES_URL = "https://appblock.robinroy.xyz/$RULES_FORMAT/rules.signed.json"
+
+    /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
+    private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
+
+    /** The rules in a rules file, or null when it's malformed. */
+    fun parseFeedRules(json: String): FeedRules? = try {
+        val o = JSONObject(json)
+        val updated = o.getString("updated")
+        if (!UTC_SECOND.matches(updated)) null
+        else {
+            val feeds = mutableMapOf<String, List<FeedRule>>()
+            val f = o.getJSONObject("feeds")
+            for (pkg in f.keys()) {
+                val arr = f.getJSONArray(pkg)
+                feeds[pkg] = (0 until arr.length()).map { i ->
+                    val r = arr.getJSONObject(i)
+                    val ids = r.getJSONArray("ids")
+                    FeedRule((0 until ids.length()).map { ids.getString(it) },
+                        r.getDouble("minCover").toFloat(),
+                        if (r.has("minVersion")) r.getLong("minVersion") else null,
+                        if (r.has("maxVersion")) r.getLong("maxVersion") else null)
+                }
+            }
+            FeedRules(Instant.parse(updated), feeds)
+        }
+    } catch (e: Exception) { null }
+
+    /** The rules that apply to `pkg` at `versionCode`. */
+    fun feedRulesFor(rules: FeedRules, pkg: String, versionCode: Long): List<FeedRule> =
+        rules.feeds[pkg].orEmpty().filter {
+            (it.minVersion == null || versionCode >= it.minVersion) &&
+                (it.maxVersion == null || versionCode <= it.maxVersion)
+        }
+
+    /** A view found by id in an app's window: whether it's shown, and where. */
+    data class FoundView(val shown: Boolean, val bounds: Bounds)
+
+    /** Whether any found view is a player: shown, and over `minCover` of the window's height. */
+    fun feedShowing(found: List<FoundView>, window: Bounds, minCover: Float): Boolean =
+        window.height > 0 && found.any {
+            val covered = minOf(it.bounds.bottom, window.bottom) - maxOf(it.bounds.top, window.top)
+            it.shown && it.bounds.width > 0 && covered >= minCover * window.height
+        }
+
+    /**
+     * Whether `json` was signed by the rules key: an ECDSA P-256 signature
+     * (base64, DER) over its UTF-8 bytes. The private key stays on the
+     * maintainer's machine (`./gradlew signRules`); this is its public half.
+     */
+    fun rulesSigned(json: String, sig: String, publicKey: String = RULES_PUBLIC_KEY): Boolean = try {
+        val key = java.security.KeyFactory.getInstance("EC")
+            .generatePublic(java.security.spec.X509EncodedKeySpec(java.util.Base64.getDecoder().decode(publicKey)))
+        java.security.Signature.getInstance("SHA256withECDSA").run {
+            initVerify(key)
+            update(json.toByteArray(Charsets.UTF_8))
+            verify(java.util.Base64.getDecoder().decode(sig.trim()))
+        }
+    } catch (e: Exception) { false }
+
+    const val RULES_PUBLIC_KEY =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXhto9YHeHzV8cvmiVrjSRBv4v9HE/2MRvMGIzsTYvdsSTNIsBkgV2T9yWMwV0MIGBXi85yjBx82gxMZRH6WrsA=="
+
+    /**
+     * The rules inside a signed file (rules/v1/rules.signed.json: the rules
+     * file as a string, and its signature), or null when the signature
+     * doesn't check out or the rules don't parse.
+     */
+    fun openSignedRules(envelope: String, publicKey: String = RULES_PUBLIC_KEY): FeedRules? = try {
+        val o = JSONObject(envelope)
+        val json = o.getString("rules")
+        if (rulesSigned(json, o.getString("sig"), publicKey)) parseFeedRules(json) else null
+    } catch (e: Exception) { null }
+
+    /** Which rules to use: the newest. A fetched file never rolls back what the APK ships. */
+    fun newerRules(current: FeedRules?, candidate: FeedRules?): FeedRules? = when {
+        candidate == null -> current
+        current == null || candidate.updated > current.updated -> candidate
+        else -> current
+    }
+
+    /**
+     * Whether to fetch the rules again, as a feed's app comes on screen:
+     * when the app updated since the last fetch (a new version may need new
+     * rules), or 6 hours on. Never twice in a minute, whatever happens.
+     */
+    fun shouldFetchRules(lastAttempt: Long, now: Long, versionAtLastAttempt: Long, versionNow: Long): Boolean =
+        now - lastAttempt >= 60_000 &&
+            (versionNow != versionAtLastAttempt || now - lastAttempt >= 6 * 3_600_000L)
+
     /** What to do about the apps on screen: wall the ones whose budget is spent, time the other limited ones. */
     data class Plan(val walled: Set<String>, val timed: Set<String>)
 
@@ -160,6 +286,13 @@ object Storage {
         }
         return Plan(walled, timed)
     }
+
+    /** Why a wall is up: the app's time is spent, or its feed (Shorts) is on screen. */
+    enum class WallKind { SPENT, FEED }
+
+    /** The walls to put up. A spent app is walled whole, whatever it's showing. */
+    fun wallKinds(spent: Set<String>, feedShowing: Set<String>): Map<String, WallKind> =
+        feedShowing.associateWith { WallKind.FEED } + spent.associateWith { WallKind.SPENT }
 
     /**
      * Whether Settings' list of enabled accessibility services (the
@@ -249,7 +382,8 @@ object Storage {
             "That's how AppBlock sees which apps are on screen, split " +
                 "screen and pop-up windows included, and how it puts the " +
                 "wall over one whose time is up. It only looks at which app " +
-                "each window belongs to, never at what's inside it.",
+                "each window belongs to, never at what's inside it (except " +
+                "YouTube's Shorts player, if you block Shorts).",
             "Required. Sees which apps are on screen and draws the wall."),
         BATTERY(
             "Unrestricted battery",
@@ -359,10 +493,11 @@ object Storage {
     fun displayedUsedMin(usedMs: Long, allowMin: Int): Long =
         minOf(ceilMin(usedMs), allowMin.toLong())
 
-    // ---- persistence: two JSON blobs in SharedPreferences ----
+    // ---- persistence: JSON blobs in SharedPreferences ----
     //
-    //   rules: {"com.instagram.android": {"allow": 5, "window": 120}, ...}
-    //   usage: {"com.instagram.android": [[startMs, endMs], ...], ...}
+    //   rules:      {"com.instagram.android": {"allow": 5, "window": 120}, ...}
+    //   usage:      {"com.instagram.android": [[startMs, endMs], ...], ...}
+    //   feedBlocks: ["com.google.android.youtube"]  (apps whose feed is blocked)
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences("appblock", Context.MODE_PRIVATE)
@@ -447,11 +582,23 @@ object Storage {
         prefs(ctx).edit().putString("usage", all.toString()).apply()
     }
 
+    /** The apps whose short-video feed the user blocked: `"feedBlocks": ["com.google.android.youtube"]`. */
+    fun loadFeedBlocks(ctx: Context): Set<String> {
+        val arr = JSONArray(prefs(ctx).getString("feedBlocks", "[]")!!)
+        return (0 until arr.length()).map { arr.getString(it) }.toSet()
+    }
+
+    fun setFeedBlocked(ctx: Context, pkg: String, blocked: Boolean) {
+        val now = loadFeedBlocks(ctx).let { if (blocked) it + pkg else it - pkg }
+        prefs(ctx).edit().putString("feedBlocks", JSONArray(now.sorted()).toString()).apply()
+    }
+
     /** Remove an app's rule AND its usage log, so nothing orphaned stays behind. */
     fun removeApp(ctx: Context, pkg: String) {
         val rules = loadRules(ctx).toMutableMap()
         rules.remove(pkg)
         saveRules(ctx, rules)
+        setFeedBlocked(ctx, pkg, false)
         val usage = loadUsage(ctx)
         usage.remove(pkg)
         prefs(ctx).edit().putString("usage", usage.toString()).apply()

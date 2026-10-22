@@ -22,6 +22,12 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Fetches the signed Shorts-detection rules (rules/v1/rules.signed.json
+         in the repo, from appblock.robinroy.xyz) so a YouTube redesign is
+         fixed without an app update. A plain download: nothing about the
+         phone or its user is sent. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- The tick as the limit dialog's steppers change -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
@@ -43,7 +49,12 @@
          the usage log, onboarding seen) to the user's Google account and
          restores it on a new phone or a reinstall. It's the default, spelled
          out so it stays on. -->
+    <!-- usesCleartextTraffic: HTTPS only, never plain HTTP. The rules fetch
+         is the one connection, and it's to an https:// URL; this makes the
+         system refuse plain HTTP anyway (also the default since Android 9,
+         but it shouldn't hang on a default). -->
     <application
+        android:usesCleartextTraffic="false"
         android:allowBackup="true"
         android:label="AppBlock"
         android:icon="@mipmap/ic_launcher"
