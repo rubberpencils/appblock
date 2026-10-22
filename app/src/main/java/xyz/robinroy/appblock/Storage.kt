@@ -176,6 +176,16 @@ object Storage {
      */
     data class FeedRules(val updated: Instant, val feeds: Map<String, List<FeedRule>>)
 
+    /**
+     * The rules format this build reads: rules/v1/ in the repo, v1/ in the
+     * APK's assets and on the site. A new format gets a new path (v2/), and
+     * the builds that read it fetch that instead.
+     */
+    const val RULES_FORMAT = "v1"
+
+    /** Where the rules are fetched from: this repo's GitHub Pages, over HTTPS only. */
+    const val RULES_URL = "https://appblock.robinroy.xyz/$RULES_FORMAT/rules.signed.json"
+
     /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
     private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
 

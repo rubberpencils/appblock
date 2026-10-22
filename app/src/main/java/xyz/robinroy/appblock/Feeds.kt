@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.net.ssl.HttpsURLConnection
 import kotlin.concurrent.thread
 
 /**
@@ -17,11 +18,7 @@ import kotlin.concurrent.thread
 object Feeds {
 
     private const val TAG = "Feeds"
-    // The rules format this build reads. A new format gets a new path
-    // (v2/...), and builds that read it fetch that instead.
-    private const val FORMAT = "v1"
-    private const val BUNDLED = "$FORMAT/rules.signed.json"
-    private const val RULES_URL = "https://appblock.robinroy.xyz/$FORMAT/rules.signed.json"
+    private const val BUNDLED = "${Storage.RULES_FORMAT}/rules.signed.json"
 
     @Volatile private var current: Storage.FeedRules? = null
     @Volatile private var fetching = false
@@ -61,7 +58,10 @@ object Feeds {
 
     private fun fetch(ctx: Context) {
         val have = rules(ctx) ?: return
-        val conn = URL(RULES_URL).openConnection() as HttpURLConnection
+        // HTTPS or nothing: anything else isn't an HttpsURLConnection, and
+        // the cast throws before a byte is sent. (Android never follows a
+        // redirect from HTTPS to HTTP either.)
+        val conn = URL(Storage.RULES_URL).openConnection() as HttpsURLConnection
         conn.connectTimeout = 10_000
         conn.readTimeout = 10_000
         conn.useCaches = false

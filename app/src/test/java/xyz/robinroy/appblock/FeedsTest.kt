@@ -6,6 +6,7 @@ import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.time.Instant
 import java.util.Base64
+import javax.xml.parsers.DocumentBuilderFactory
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,6 +15,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.w3c.dom.Element
 
 /**
  * Blocking a feed (YouTube's Shorts): reading and trusting the rules file,
@@ -115,14 +117,27 @@ class FeedsTest {
     @Test
     fun `the shipped rules are signed by the real key and match rules json`() {
         // Catches an edit to rules/v1/rules.json without ./gradlew signRules.
-        val shipped = File("../rules/v1/rules.signed.json").readText()
+        val dir = "../rules/${Storage.RULES_FORMAT}"
+        val shipped = File("$dir/rules.signed.json").readText()
         val opened = Storage.openSignedRules(shipped)
         assertNotNull("rules.signed.json isn't signed by the rules key", opened)
         assertEquals("rules.signed.json is out of date: run ./gradlew signRules",
-            File("../rules/v1/rules.json").readText(), JSONObject(shipped).getString("rules"))
+            File("$dir/rules.json").readText(), JSONObject(shipped).getString("rules"))
         assertTrue(opened!!.feeds.keys.all { it in Storage.FEEDS })
         // Signed on a clock ahead: every later signing would lose to it until then.
         assertTrue("signed in the future", opened.updated <= Instant.now())
+    }
+
+    @Test
+    fun `the rules come over HTTPS only, never plain HTTP`() {
+        assertTrue(Storage.RULES_URL.startsWith("https://"))
+        assertTrue("fetched as the format this build reads",
+            Storage.RULES_URL.endsWith("/${Storage.RULES_FORMAT}/rules.signed.json"))
+        // And the system refuses plain HTTP for the whole app.
+        val app = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+            .getElementsByTagName("application").item(0) as Element
+        assertEquals("false", app.getAttributeNS("http://schemas.android.com/apk/res/android", "usesCleartextTraffic"))
     }
 
     // ---- when to fetch ----
