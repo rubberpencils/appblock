@@ -16,7 +16,8 @@ whenever Shorts is on screen and comes down when you go back.
 
 No dependencies, no account, no analytics. Nothing about you leaves your phone.
 The one download is the Shorts-detection rules, a signed file from this repo
-(`rules/`), so a YouTube redesign gets fixed without an app update.
+(`rules/`, served at appblock.robinroy.xyz), so a YouTube redesign gets fixed
+without an app update.
 
 The blocker is an accessibility service: Android tells it which apps are on
 screen (split screen and pop-up windows included) and lets it draw the wall over

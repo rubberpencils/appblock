@@ -146,20 +146,29 @@ phone; set `ANDROID_SERIAL=emulator-5554` to point one at the emulator.
 ## Shorts detection rules
 
 How the blocker spots YouTube's Shorts (the player's view ids) is data, in
-`rules/rules.json`, so a YouTube redesign is fixed without an app update:
-the app bundles the rules and fetches newer ones from their `source` URL
-(this repo's raw file on `main` for now; change `source` to move hosts).
+`rules/v1/rules.json`, so a YouTube redesign is fixed without an app update:
+the app bundles the rules and fetches newer ones from
+`https://appblock.robinroy.xyz/v1/rules.signed.json`. That's GitHub Pages
+for this repo (a CNAME at Namecheap); the `Publish rules` workflow deploys
+`rules/<format>/rules.signed.json` there on every push to `main` that
+changes `rules/`. `v1` is the rules format: a build fetches only the one it
+reads, so a new format goes in `rules/v2/` for the builds that read it,
+and `v1` keeps being served to older ones.
 
-- After editing `rules/rules.json`, bump its `version` and run
-  `./gradlew signRules`, which writes `rules/rules.signed.json`. The unit
-  tests fail if the two disagree. Signing needs `rules-signing-key.pem` in
-  the repo root (gitignored, only on the maintainer's machine; keep a backup:
-  without it, rules can only change with an app update that swaps the key in
-  `Storage.RULES_PUBLIC_KEY`). Agents: ask before signing.
-- The rules go live for every user once `rules/rules.signed.json` is on
-  `main`. A rule only names view ids to look for in an app whose feed the
-  user blocked; a bad one can at worst wall YouTube wrongly, and a higher
-  `version` with the old content rolls it back.
+- After editing `rules/v1/rules.json`, run `./gradlew signRules`. It stamps
+  the file's `updated` with the time now (UTC; the newer file wins on the
+  phone) and writes `rules/v1/rules.signed.json`, refusing if the clock
+  isn't past the last signing. The unit tests fail if the two files
+  disagree. Signing needs `rules-signing-key.pem` in the repo root
+  (gitignored; only on the maintainer's and trusted developers' machines,
+  never in the repo or CI; keep a backup: without it, rules can only change
+  with an app update that swaps the key in `Storage.RULES_PUBLIC_KEY`).
+  Agents: ask before signing.
+- The rules go live for every user once `rules/v1/rules.signed.json` is
+  on `main` and `Publish rules` has run. A rule only names view ids to look
+  for in an app whose feed the user blocked; a bad one can at worst wall
+  YouTube wrongly, and re-signing the old content (a newer `updated`)
+  rolls it back.
 - `scripts/youtube.sh` checks the rules against the real, current YouTube:
   it copies YouTube off the phone onto the emulator and runs
   `YouTubeCanaryTest`. CI's `YouTube canary` workflow does the same daily and
