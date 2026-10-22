@@ -164,6 +164,14 @@ and `v1` keeps being served to older ones.
   never in the repo or CI; keep a backup: without it, rules can only change
   with an app update that swaps the key in `Storage.RULES_PUBLIC_KEY`).
   Agents: ask before signing.
+- **New developers: getting the signing key.** You only need it to change
+  the rules; everything else (building, tests, the e2e suite) works without
+  it. Ask the maintainer, who shares it through a password manager, never
+  over chat or email. Save it as `rules-signing-key.pem` in the repo root
+  (`.gitignore` already covers it), and never commit it, paste it anywhere
+  or put it in CI. Whoever holds it can publish rules to every phone, so
+  if it may have leaked, tell the maintainer at once: the fix is an app
+  update with a new key.
 - The rules go live for every user once `rules/v1/rules.signed.json` is
   on `main` and `Publish rules` has run. A rule only names view ids to look
   for in an app whose feed the user blocked; a bad one can at worst wall
@@ -171,10 +179,17 @@ and `v1` keeps being served to older ones.
   rolls it back.
 - `scripts/youtube.sh` checks the rules against the real, current YouTube:
   it copies YouTube off the phone onto the emulator and runs
-  `YouTubeCanaryTest`. CI's `YouTube canary` workflow does the same daily and
-  on rules changes; it's not a required check (it needs the network, and
-  YouTube changes under us), and it reads YouTube's APK from a private repo
-  release (secrets `YOUTUBE_APKS_REPO`, `YOUTUBE_APKS_TOKEN`).
+  `YouTubeCanaryTest`. It keeps that copy in `.avd/youtube/` (gitignored)
+  and reuses it when no phone is connected, so the phone is only needed
+  for a fresh copy. On a new clone there's no copy yet: the first run
+  needs an Android phone with YouTube connected over adb, and the script
+  says so and stops without one. The copy is per machine and only as new
+  as the last run with the phone connected, so connect it before checking
+  a rules change. A developer without such a phone can't run the canary:
+  ask the maintainer to run it. CI's `YouTube canary` workflow does the
+  same daily and on rules changes; it's not a required check (it needs the
+  network, and YouTube changes under us), and it reads YouTube's APK from
+  a private repo release (secrets `YOUTUBE_APKS_REPO`, `YOUTUBE_APKS_TOKEN`).
 
 ## Conventions
 
