@@ -10,20 +10,22 @@ Pick apps and give each a budget: **allow X in any rolling Y**, in minutes, hour
 days (say, 10 min in any 2 hrs). When the budget is spent, opening the app puts a
 "blocked, try again in N min" wall over it.
 
-It can also block YouTube's Shorts outright, even with time left: switch on
-"Block YouTube Shorts" under YouTube on the home list, and a wall goes up
-whenever Shorts is on screen and comes down when you go back.
+It can also block YouTube's Shorts and Instagram's Reels outright, even with time
+left: switch on "Block YouTube Shorts" under YouTube, or "Block Instagram Reels"
+under Instagram, on the home list. A wall goes up whenever Shorts or Reels is on
+screen, however you got there (the tab, a link, a message), and comes down when
+you go back. Thumbnails stay.
 
 No dependencies, no account, no analytics. Nothing about you leaves your phone.
-The one download is the Shorts-detection rules, a signed file from this repo
-(`rules/`, served at appblock.robinroy.xyz), so a YouTube redesign gets fixed
+The one download is the rules for spotting Shorts and Reels, a signed file from
+this repo (`rules/`, served at appblock.robinroy.xyz), so a redesign gets fixed
 without an app update.
 
 The blocker is an accessibility service: Android tells it which apps are on
 screen (split screen and pop-up windows included) and lets it draw the wall over
 one whose time is up. It only looks at which app each window belongs to, never at
-what's inside, except for YouTube's Shorts player (by its view id, no text) when
-Shorts are blocked. Besides switching it on in Settings > Accessibility, it needs a
+what's inside, except for YouTube's Shorts player or Instagram's Reels player (by
+its view id, no text) when they're blocked. Besides switching it on in Settings > Accessibility, it needs a
 battery exemption so the phone doesn't put it to sleep. Usage access is optional,
 for screen-time numbers. While a limited app is on screen, a notification counts
 down its time (with 50%/90% warnings); two limited apps side by side get one each.

@@ -3,7 +3,8 @@
 AppBlock is a small Android app-blocker: an accessibility service watches
 which apps are on screen (the window list, split screen and pop-ups included)
 and draws a block wall over a limited app's window once it exceeds its time
-budget, and over YouTube while Shorts is on screen if the user blocks Shorts.
+budget, and over YouTube or Instagram while Shorts or Reels is on screen if
+the user blocks them.
 "Usage access" is optional, for screen-time stats only.
 Plain Kotlin + Gradle, no Android Studio required.
 
@@ -91,7 +92,8 @@ request (a branch gets CI once its PR is open; open a draft PR early): `test` (u
 tests + compile), and the suite above on fresh emulators: `e2e-android-14`
 (the Google Play image, like `scripts/emulator.sh`'s) and `e2e-android-16`
 on Android 16, the version the app targets. The suite installs `fixture/`,
-a stand-in app with YouTube's Shorts player view id, for the Shorts tests. Check a
+a stand-in app with YouTube's and Instagram's player view ids, for the Shorts
+and Reels tests. Check a
 push with `gh run list`; a failing e2e run uploads an `e2e-report-api-<level>`
 artifact with the HTML report, plus a screenshot and the device log for
 each failed test.
@@ -143,12 +145,19 @@ checking UI changes; use the phone for what the emulator can't tell you
 (haptics, OxygenOS behaviour). With both connected, the scripts target the
 phone; set `ANDROID_SERIAL=emulator-5554` to point one at the emulator.
 
-## Shorts detection rules
+## Shorts and Reels detection rules
 
-How the blocker spots YouTube's Shorts (the player's view ids) is data, in
-`rules/v1/rules.json`, so a YouTube redesign is fixed without an app update:
-the app bundles the rules and fetches newer ones from
-`https://appblock.robinroy.xyz/v1/rules.signed.json`. That's GitHub Pages
+How the blocker spots YouTube's Shorts and Instagram's Reels (the players'
+view ids) is data, in `rules/v1/rules.json`, so a redesign is fixed without
+an app update. Which apps can have their feed blocked is code
+(`Storage.FEEDS`): a rule for any other app does nothing. In Instagram's
+code a "reel" is a Story (`reels_tray_container` is the Stories row) and
+Reels are "clips" (`clips_viewer_view_pager`, `clips_video_container`), so
+an Instagram rule names only `clips_*` ids; a unit test holds it to that.
+The Reels tab, a reel from Explore and a reel link all open the same
+player. There's no Instagram canary: the real Instagram needs an account,
+so check a Reels rule change on a phone. The app bundles the rules and
+fetches newer ones from `https://appblock.robinroy.xyz/v1/rules.signed.json`. That's GitHub Pages
 for this repo (a CNAME at Namecheap); the `Publish rules` workflow deploys
 `rules/<format>/rules.signed.json` there on every push to `main` that
 changes `rules/`. `v1` is the rules format: a build fetches only the one it
