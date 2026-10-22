@@ -1,6 +1,6 @@
 name: YouTube canary
 
-# Do the shipped Shorts rules (rules/rules.json) still catch the real
+# Do the shipped Shorts rules (rules/v1/rules.json) still catch the real
 # YouTube's Shorts? Kept out of CI's required checks: it needs the network
 # and a current YouTube, and YouTube changes under us, so a red run here
 # means "update the rules", not "the app is broken". Daily, on a push that

@@ -1,5 +1,5 @@
 #!/bin/sh -e
-# The YouTube canary, locally: do the shipped Shorts rules (rules/rules.json)
+# The YouTube canary, locally: do the shipped Shorts rules (rules/v1/rules.json)
 # still catch the real YouTube's Shorts? Copies YouTube off the connected
 # phone into .avd/youtube/ (the last copy is reused without a phone),
 # installs it on the emulator over the Play image's older one, and runs

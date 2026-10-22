@@ -3,6 +3,7 @@ package xyz.robinroy.appblock
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
 
 // A blocking rule: "allow `allowMin` minutes of use per rolling `windowMin` minutes".
 data class Rule(val allowMin: Int, val windowMin: Int)
@@ -151,10 +152,10 @@ object Storage {
     // ---- short-video feeds (YouTube Shorts): blocked outright, always ----
     //
     // The apps whose feed can be blocked, and how to spot the feed in each,
-    // come from a signed rules file (rules/rules.json in the repo): bundled
-    // in the APK, and fetched again from its `source` so a YouTube redesign
-    // is fixed without an app update. A rule names the player's view ids,
-    // never text, so it works in every language.
+    // come from a signed rules file (rules/v1/rules.json in the repo):
+    // bundled in the APK, and fetched again from appblock.robinroy.xyz so a
+    // YouTube redesign is fixed without an app update. A rule names the
+    // player's view ids, never text, so it works in every language.
 
     /** The apps with a feed to block, and the switch's label on the home list. */
     val FEEDS = mapOf("com.google.android.youtube" to "Block YouTube Shorts")
@@ -168,16 +169,21 @@ object Storage {
     data class FeedRule(val ids: List<String>, val minCover: Float,
                         val minVersion: Long? = null, val maxVersion: Long? = null)
 
-    /** The rules file: `version` only goes up; `source` is where the next one comes from. */
-    data class FeedRules(val version: Int, val source: String, val feeds: Map<String, List<FeedRule>>)
+    /**
+     * The rules file: when it was signed (`updated`, UTC; the newer file
+     * wins), and the feeds. Its format is the `v1` in its path: a build
+     * fetches only the format it reads.
+     */
+    data class FeedRules(val updated: Instant, val feeds: Map<String, List<FeedRule>>)
 
-    /** The rules file format this build reads. A newer one is ignored until the app updates. */
-    const val FEED_SCHEMA = 1
+    /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
+    private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
 
-    /** The rules in a rules file, or null when it's malformed or of a newer schema. */
+    /** The rules in a rules file, or null when it's malformed. */
     fun parseFeedRules(json: String): FeedRules? = try {
         val o = JSONObject(json)
-        if (o.getInt("schema") != FEED_SCHEMA) null
+        val updated = o.getString("updated")
+        if (!UTC_SECOND.matches(updated)) null
         else {
             val feeds = mutableMapOf<String, List<FeedRule>>()
             val f = o.getJSONObject("feeds")
@@ -192,7 +198,7 @@ object Storage {
                         if (r.has("maxVersion")) r.getLong("maxVersion") else null)
                 }
             }
-            FeedRules(o.getInt("version"), o.getString("source"), feeds)
+            FeedRules(Instant.parse(updated), feeds)
         }
     } catch (e: Exception) { null }
 
@@ -232,7 +238,7 @@ object Storage {
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXhto9YHeHzV8cvmiVrjSRBv4v9HE/2MRvMGIzsTYvdsSTNIsBkgV2T9yWMwV0MIGBXi85yjBx82gxMZRH6WrsA=="
 
     /**
-     * The rules inside a signed file (rules/rules.signed.json: the rules
+     * The rules inside a signed file (rules/v1/rules.signed.json: the rules
      * file as a string, and its signature), or null when the signature
      * doesn't check out or the rules don't parse.
      */
@@ -245,7 +251,7 @@ object Storage {
     /** Which rules to use: the newest. A fetched file never rolls back what the APK ships. */
     fun newerRules(current: FeedRules?, candidate: FeedRules?): FeedRules? = when {
         candidate == null -> current
-        current == null || candidate.version > current.version -> candidate
+        current == null || candidate.updated > current.updated -> candidate
         else -> current
     }
 

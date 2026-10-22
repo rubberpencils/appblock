@@ -21,7 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Do the shipped rules (rules/rules.json) still catch the real YouTube's
+ * Do the shipped rules (rules/v1/rules.json) still catch the real YouTube's
  * Shorts? Needs a current YouTube on the device and the network, and
  * YouTube changes under us, so it's not part of the e2e suite: it runs
  * only when asked (`canary=true`), in CI's youtube-canary job and
@@ -61,7 +61,7 @@ class YouTubeCanaryTest {
         assertFalse("walled YouTube's home tab", appears(feedWall, timeout = 5_000))
 
         device.findObject(shortsTab).click()
-        assertTrue("Shorts not walled: the rules (rules/rules.json) need updating", appears(feedWall, timeout = 20_000))
+        assertTrue("Shorts not walled: the rules (rules/v1/rules.json) need updating", appears(feedWall, timeout = 20_000))
 
         E2e.waitFor(E2e.text("Go back")).click()
         assertTrue("wall stayed up after going back", device.wait(Until.gone(feedWall), E2e.WAIT))

@@ -1,7 +1,10 @@
 import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import java.security.KeyFactory
 import java.security.Signature
 import java.security.spec.PKCS8EncodedKeySpec
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.Properties
 
@@ -55,8 +58,8 @@ android {
         jvmTarget = "17"
     }
 
-    // The Shorts-detection rules ship in the APK (rules.signed.json in its
-    // assets), so a fresh install works offline before its first fetch.
+    // The Shorts-detection rules ship in the APK (v1/rules.signed.json in
+    // its assets), so a fresh install works offline before its first fetch.
     sourceSets["main"].assets.srcDir(rootProject.file("rules"))
 }
 
@@ -84,14 +87,15 @@ tasks.matching { it.name == "connectedDebugAndroidTest" }.configureEach {
     dependsOn(":fixture:installDebug")
 }
 
-// Signs rules/rules.json into rules/rules.signed.json, the file the app
-// bundles and fetches: the rules as a string plus an ECDSA P-256 signature
-// over it. The private key is <repo>/rules-signing-key.pem (gitignored, on
-// the maintainer's machine only); the app checks against its public half
-// (Storage.RULES_PUBLIC_KEY). Run it after every edit to rules.json.
+// Signs rules/<format>/rules.json (rules/v1/...) into rules.signed.json next
+// to it, the file the app bundles and fetches: the rules as a string plus an
+// ECDSA P-256 signature over it. First it stamps the rules' "updated" with
+// the time now (UTC): the newer file wins on the phone. The private key is
+// <repo>/rules-signing-key.pem (gitignored, on key holders' machines only,
+// never CI's); the app checks against its public half
+// (Storage.RULES_PUBLIC_KEY). Run it after every edit to a rules.json.
 tasks.register("signRules") {
-    val rules = rootProject.file("rules/rules.json")
-    val signed = rootProject.file("rules/rules.signed.json")
+    val formats = rootProject.file("rules")
     val keyFile = rootProject.file("rules-signing-key.pem")
     doLast {
         check(keyFile.exists()) { "No rules-signing-key.pem in the repo root: only the maintainer can sign rules" }
@@ -99,13 +103,31 @@ tasks.register("signRules") {
             keyFile.readText().replace(Regex("-----[A-Z ]+-----"), ""))
         val key = KeyFactory.getInstance("EC")
             .generatePrivate(PKCS8EncodedKeySpec(der))
-        val json = rules.readText()
-        val sig = Signature.getInstance("SHA256withECDSA").run {
-            initSign(key)
-            update(json.toByteArray(Charsets.UTF_8))
-            Base64.getEncoder().encodeToString(sign())
+        val stamp = Regex("\"updated\": \"([^\"]*)\"")
+        // Whole seconds, so it reads "2026-10-22T17:30:00Z".
+        val now = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+        for (dir in formats.listFiles { f -> f.isDirectory }!!.sorted()) {
+            val rules = dir.resolve("rules.json")
+            val signed = dir.resolve("rules.signed.json")
+            val text = rules.readText()
+            check(stamp.containsMatchIn(text)) { "No \"updated\": \"...\" in $rules" }
+            // A clock behind the last signing would publish rules every
+            // phone ignores as older than the ones it has.
+            if (signed.exists()) {
+                val last = (JsonSlurper().parseText(signed.readText()) as Map<*, *>)["rules"] as String
+                stamp.find(last)?.groupValues?.get(1)?.let {
+                    check(now > Instant.parse(it)) { "The clock ($now) isn't past the last signing ($it)" }
+                }
+            }
+            val json = text.replace(stamp, "\"updated\": \"$now\"")
+            val sig = Signature.getInstance("SHA256withECDSA").run {
+                initSign(key)
+                update(json.toByteArray(Charsets.UTF_8))
+                Base64.getEncoder().encodeToString(sign())
+            }
+            rules.writeText(json)
+            signed.writeText("{\n  \"rules\": ${JsonOutput.toJson(json)},\n  \"sig\": ${JsonOutput.toJson(sig)}\n}\n")
+            println("Signed rules/${dir.name}/rules.json (updated $now)")
         }
-        signed.writeText("{\n  \"rules\": ${JsonOutput.toJson(json)},\n  \"sig\": ${JsonOutput.toJson(sig)}\n}\n")
-        println("Signed ${rules.name} into ${signed.name}")
     }
 }

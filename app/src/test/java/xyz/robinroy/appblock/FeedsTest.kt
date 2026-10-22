@@ -4,6 +4,7 @@ import java.io.File
 import java.security.KeyPairGenerator
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
+import java.time.Instant
 import java.util.Base64
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -24,8 +25,9 @@ class FeedsTest {
     private val yt = "com.google.android.youtube"
     private val window = Storage.Bounds(0, 0, 1080, 2400)
 
-    private fun rules(version: Int = 1, feeds: String = """{"$yt": [{"ids": ["reel_watch_player"], "minCover": 0.7}]}""") =
-        """{"schema": 1, "version": $version, "source": "https://example.com/r.json", "feeds": $feeds}"""
+    private fun rules(updated: String = "2026-10-22T17:30:00Z",
+                      feeds: String = """{"$yt": [{"ids": ["reel_watch_player"], "minCover": 0.7}]}""") =
+        """{"updated": "$updated", "feeds": $feeds}"""
 
     // A throwaway key pair, standing in for the maintainer's.
     private val keys = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
@@ -44,17 +46,27 @@ class FeedsTest {
 
     @Test
     fun `rules file - parsed`() {
-        val r = Storage.parseFeedRules(rules(version = 7))!!
-        assertEquals(7, r.version)
-        assertEquals("https://example.com/r.json", r.source)
+        val r = Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:00Z"))!!
+        assertEquals(Instant.parse("2026-10-22T17:30:00Z"), r.updated)
         assertEquals(listOf(Storage.FeedRule(listOf("reel_watch_player"), 0.7f)), r.feeds[yt])
     }
 
     @Test
-    fun `rules file - malformed or a newer schema is ignored`() {
+    fun `rules file - malformed is ignored`() {
         assertNull(Storage.parseFeedRules("not json"))
-        assertNull(Storage.parseFeedRules("""{"schema": 1, "version": 1}"""))
-        assertNull(Storage.parseFeedRules(rules().replace("\"schema\": 1", "\"schema\": 2")))
+        assertNull("no feeds", Storage.parseFeedRules("""{"updated": "2026-10-22T17:30:00Z"}"""))
+        assertNull("no updated", Storage.parseFeedRules("""{"feeds": {}}"""))
+    }
+
+    @Test
+    fun `rules file - updated is UTC to the second, nothing else`() {
+        assertNull("not a time", Storage.parseFeedRules(rules(updated = "yesterday")))
+        assertNull("no time of day", Storage.parseFeedRules(rules(updated = "2026-10-22")))
+        assertNull("not UTC", Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:00+05:30")))
+        assertNull("no zone", Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:00")))
+        assertNull("fractions", Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:00.5Z")))
+        assertNull("no such day", Storage.parseFeedRules(rules(updated = "2026-02-30T17:30:00Z")))
+        assertNull("no such hour", Storage.parseFeedRules(rules(updated = "2026-10-22T25:00:00Z")))
     }
 
     @Test
@@ -79,34 +91,38 @@ class FeedsTest {
 
     @Test
     fun `signed file - opened only when the signature checks out`() {
-        val json = rules(version = 3)
-        assertEquals(3, Storage.openSignedRules(envelope(json), publicKey)?.version)
-        assertNull(Storage.openSignedRules(envelope(json, sign(rules(version = 4))), publicKey))
+        val json = rules(updated = "2026-10-22T17:30:00Z")
+        assertEquals(Instant.parse("2026-10-22T17:30:00Z"), Storage.openSignedRules(envelope(json), publicKey)?.updated)
+        assertNull("another file's signature",
+            Storage.openSignedRules(envelope(json, sign(rules(updated = "2026-10-23T17:30:00Z"))), publicKey))
         assertNull(Storage.openSignedRules("{}", publicKey))
     }
 
     @Test
     fun `newest rules win - a fetch never rolls back the bundled ones`() {
-        val v1 = Storage.parseFeedRules(rules(version = 1))
-        val v2 = Storage.parseFeedRules(rules(version = 2))
-        assertSame(v2, Storage.newerRules(v1, v2))
-        assertSame(v2, Storage.newerRules(v2, v1))
-        assertSame(v1, Storage.newerRules(v1, null))
-        assertSame(v1, Storage.newerRules(null, v1))
-        assertSame("same version keeps what's there", v1,
-            Storage.newerRules(v1, Storage.parseFeedRules(rules(version = 1))))
+        val older = Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:00Z"))
+        val newer = Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:01Z"))
+        assertSame(newer, Storage.newerRules(older, newer))
+        assertSame(newer, Storage.newerRules(newer, older))
+        assertSame(older, Storage.newerRules(older, null))
+        assertSame(older, Storage.newerRules(null, older))
+        assertSame("a year on is newer, not just a bigger month", newer,
+            Storage.newerRules(Storage.parseFeedRules(rules(updated = "2025-12-31T23:59:59Z")), newer))
+        assertSame("the same time keeps what's there", older,
+            Storage.newerRules(older, Storage.parseFeedRules(rules(updated = "2026-10-22T17:30:00Z"))))
     }
 
     @Test
     fun `the shipped rules are signed by the real key and match rules json`() {
-        // Catches an edit to rules/rules.json without ./gradlew signRules.
-        val shipped = File("../rules/rules.signed.json").readText()
+        // Catches an edit to rules/v1/rules.json without ./gradlew signRules.
+        val shipped = File("../rules/v1/rules.signed.json").readText()
         val opened = Storage.openSignedRules(shipped)
         assertNotNull("rules.signed.json isn't signed by the rules key", opened)
         assertEquals("rules.signed.json is out of date: run ./gradlew signRules",
-            File("../rules/rules.json").readText(), JSONObject(shipped).getString("rules"))
+            File("../rules/v1/rules.json").readText(), JSONObject(shipped).getString("rules"))
         assertTrue(opened!!.feeds.keys.all { it in Storage.FEEDS })
-        assertTrue(opened.source.startsWith("https://"))
+        // Signed on a clock ahead: every later signing would lose to it until then.
+        assertTrue("signed in the future", opened.updated <= Instant.now())
     }
 
     // ---- when to fetch ----

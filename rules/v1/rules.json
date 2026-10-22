@@ -1,7 +1,5 @@
 {
-  "schema": 1,
-  "version": 1,
-  "source": "https://raw.githubusercontent.com/rubberpencils/appblock/main/rules/rules.signed.json",
+  "updated": "2026-10-22T17:49:40Z",
   "feeds": {
     "com.google.android.youtube": [
       {

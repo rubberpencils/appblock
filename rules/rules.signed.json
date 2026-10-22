@@ -1,4 +1,0 @@
-{
-  "rules": "{\n  \"schema\": 1,\n  \"version\": 1,\n  \"source\": \"https://raw.githubusercontent.com/rubberpencils/appblock/main/rules/rules.signed.json\",\n  \"feeds\": {\n    \"com.google.android.youtube\": [\n      {\n        \"ids\": [\"reel_recycler\", \"reel_player_page_container\", \"reel_watch_fragment_root\", \"reel_watch_player\"],\n        \"minCover\": 0.7\n      }\n    ]\n  }\n}\n",
-  "sig": "MEUCIQDGADc/gH1KkMUh6UuI5s2Rldf4J/lGIR8pSGJX58tzUAIgDTyR+eo4NmD9JSZaJScHWT12yTcnAH2GDLnUhOmQNEA="
-}

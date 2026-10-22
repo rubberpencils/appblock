@@ -9,15 +9,19 @@ import kotlin.concurrent.thread
 /**
  * The Shorts-detection rules on the phone: the newest of the copy bundled
  * in the APK and the last one fetched. Fetching is a plain download of the
- * signed rules file from the rules' own `source` (GitHub for now), and a
- * new rules file can name a new `source`, so the host can move without an
- * app update. A file whose signature doesn't check out is thrown away.
- * Nothing about the phone or its user is sent.
+ * signed rules file from appblock.robinroy.xyz (GitHub Pages, deployed from
+ * this repo's rules/; the host can move behind that name). A file whose
+ * signature doesn't check out is thrown away. Nothing about the phone or
+ * its user is sent.
  */
 object Feeds {
 
     private const val TAG = "Feeds"
-    private const val BUNDLED = "rules.signed.json"
+    // The rules format this build reads. A new format gets a new path
+    // (v2/...), and builds that read it fetch that instead.
+    private const val FORMAT = "v1"
+    private const val BUNDLED = "$FORMAT/rules.signed.json"
+    private const val RULES_URL = "https://appblock.robinroy.xyz/$FORMAT/rules.signed.json"
 
     @Volatile private var current: Storage.FeedRules? = null
     @Volatile private var fetching = false
@@ -57,7 +61,7 @@ object Feeds {
 
     private fun fetch(ctx: Context) {
         val have = rules(ctx) ?: return
-        val conn = URL(have.source).openConnection() as HttpURLConnection
+        val conn = URL(RULES_URL).openConnection() as HttpURLConnection
         conn.connectTimeout = 10_000
         conn.readTimeout = 10_000
         conn.useCaches = false
@@ -67,15 +71,15 @@ object Feeds {
         prefs(ctx).getString("etag", null)?.let { conn.setRequestProperty("If-None-Match", it) }
         try {
             when (conn.responseCode) {
-                HttpURLConnection.HTTP_NOT_MODIFIED -> Log.i(TAG, "rules ${have.version} still current")
+                HttpURLConnection.HTTP_NOT_MODIFIED -> Log.i(TAG, "rules ${have.updated} still current")
                 HttpURLConnection.HTTP_OK -> {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     val got = Storage.openSignedRules(body)
                     if (got == null) { Log.w(TAG, "fetched rules not signed or unreadable"); return }
-                    if (Storage.newerRules(have, got) !== got) { Log.i(TAG, "fetched rules ${got.version}, have ${have.version}"); return }
+                    if (Storage.newerRules(have, got) !== got) { Log.i(TAG, "fetched rules ${got.updated}, have ${have.updated}"); return }
                     prefs(ctx).edit().putString("signed", body).putString("etag", conn.getHeaderField("ETag")).apply()
                     current = got
-                    Log.i(TAG, "rules ${have.version} -> ${got.version}")
+                    Log.i(TAG, "rules ${have.updated} -> ${got.updated}")
                 }
                 else -> Log.w(TAG, "rules fetch: HTTP ${conn.responseCode}")
             }

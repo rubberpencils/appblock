@@ -239,7 +239,7 @@ class BlockerService : AccessibilityService() {
     private fun feedShowing(pkg: String): Boolean {
         val rules = Feeds.rules(this) ?: return false
         val version = versions.getOrPut(pkg) {
-            versionOf(pkg).also { Log.i(TAG, "$pkg $it on screen, feed rules ${rules.version}") }
+            versionOf(pkg).also { Log.i(TAG, "$pkg $it on screen, feed rules ${rules.updated}") }
         }
         Feeds.maybeFetch(this, pkg, version)
         val window = onScreen[pkg] ?: return false

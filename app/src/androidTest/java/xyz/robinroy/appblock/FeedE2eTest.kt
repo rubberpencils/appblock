@@ -19,6 +19,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.time.Instant
 
 /**
  * Blocking a feed (YouTube's Shorts): the switch on the home list, and the
@@ -39,7 +40,7 @@ class FeedE2eTest {
     val screenshotOnFailure = E2e.ScreenshotOnFailure()
 
     private val feedWall = E2e.textContains("Shorts are blocked")
-    private val fixtureRules = Storage.FeedRules(version = 999, source = "https://example.invalid/",
+    private val fixtureRules = Storage.FeedRules(updated = Instant.MAX,
         feeds = mapOf(FIXTURE to listOf(Storage.FeedRule(listOf("reel_watch_player"), 0.7f))))
 
     private fun blockFixtureFeed() {
