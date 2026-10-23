@@ -154,11 +154,27 @@ object E2e {
      */
     fun openAsPopUp(pkg: String) {
         shell("settings put global enable_freeform_support 1")
-        // A task left from an earlier test would come back as it was (full
-        // screen), not as a pop-up, so it goes first.
-        taskIdOrNull(pkg)?.let { shell("am stack remove $it") }
         val launcher = ctx.packageManager.getLaunchIntentForPackage(pkg)!!.component!!
-        shell("am start -W --windowingMode 5 -n ${launcher.flattenToShortString()}")
+        // The window manager hears of the setting through a ContentObserver on
+        // its display thread, after `settings put` has returned, and nothing in
+        // dumpsys shows when it has. A launch that gets there first is quietly
+        // made full screen (on a busy CI emulator, runs 39107836672 and
+        // 39951486366), so ask the window manager what it made, and try again.
+        var tries = 0
+        val popUp = eventually {
+            // A task left from an earlier test would come back as it was (full
+            // screen), not as a pop-up, so it goes first; so does a full-screen try.
+            taskIdOrNull(pkg)?.let { id ->
+                shell("am stack remove $id")
+                check(eventually { taskIdOrNull(pkg) == null }) { "$pkg's task $id wasn't removed" }
+            }
+            tries++
+            shell("am start -W --windowingMode 5 -n ${launcher.flattenToShortString()}")
+            val mode = windowingMode(pkg)
+            if (mode != "freeform") Log.w("E2e", "$pkg came up $mode (try $tries): freeform not in effect yet")
+            mode == "freeform"
+        }
+        check(popUp) { "$pkg came up full screen $tries times: are pop-ups supported?" }
         check(eventually {
             isOnScreen(pkg) &&
                 (device.findObject(By.pkg(pkg))?.let { windowBounds(it).width() < device.displayWidth } ?: false)
@@ -183,6 +199,13 @@ object E2e {
     private fun taskIdOrNull(pkg: String): Int? =
         Regex("taskId=(\\d+): ${Regex.escape(pkg)}/").find(shell("am stack list"))
             ?.groupValues?.get(1)?.toInt()
+
+    /** The window manager's windowing mode for `pkg`'s task ("freeform", "fullscreen", ...), or null without one. */
+    private fun windowingMode(pkg: String): String? =
+        // One block per root task: its configuration (with the mode), then its tasks.
+        shell("am stack list").split(Regex("\n\\s*\n"))
+            .firstOrNull { Regex("taskId=\\d+: ${Regex.escape(pkg)}/").containsMatchIn(it) }
+            ?.let { Regex("mWindowingMode=(\\w+)").find(it)?.groupValues?.get(1) }
 
     /** Whether `pkg` has a visible window, per the window manager. */
     fun isOnScreen(pkg: String): Boolean =
