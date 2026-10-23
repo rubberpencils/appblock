@@ -46,7 +46,9 @@ object Guides {
         "How it works", "You choose the rule while you're calm. The phone keeps it later."
     ) {
         POINTS.forEachIndexed { i, p ->
-            addView(point(context, p, last = i == POINTS.lastIndex), Ui.lp().apply {
+            // The loop is easier watched than read: the first point shows it.
+            val extra = if (i == 0) RollingWindow(context).apply { play() } else null
+            addView(point(context, p, last = i == POINTS.lastIndex, extra), Ui.lp().apply {
                 topMargin = Ui.dp(context, if (i == 0) 12 else 0)
             })
         }
@@ -54,8 +56,11 @@ object Guides {
 
     /** Open the sheet straight on "How it works" (the empty state's link). */
     fun openHowItWorks(activity: Activity) = InfoSheet(activity).let { it.show(howItWorks(it)) }
-    /** An icon, a heading and a paragraph, divided from the next by a hairline. */
-    private fun point(context: Context, p: Point, last: Boolean) = LinearLayout(context).apply {
+    /**
+     * An icon, a heading and a paragraph, then `extra` (an illustration) if
+     * given, divided from the next by a hairline.
+     */
+    private fun point(context: Context, p: Point, last: Boolean, extra: View? = null) = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -71,6 +76,10 @@ object Guides {
                 addView(Ui.muted(context, p.copy, 15f).apply { setLineSpacing(0f, 1.45f) },
                     Ui.lp().apply { topMargin = Ui.dp(context, 6) })
             }, Ui.lp(0).apply { weight = 1f })
+        })
+        // 132 dp: the least that still fits a stretch lifting with its "+N min" over it.
+        if (extra != null) addView(extra, LinearLayout.LayoutParams(Ui.MATCH, Ui.dp(context, 132)).apply {
+            bottomMargin = Ui.dp(context, 8)
         })
         if (!last) addView(View(context).apply { setBackgroundColor(context.getColor(R.color.line)) },
             LinearLayout.LayoutParams(Ui.MATCH, 1))
