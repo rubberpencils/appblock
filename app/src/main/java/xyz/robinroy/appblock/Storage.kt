@@ -75,8 +75,13 @@ object Storage {
     /** What a window on screen is: an app's, the system's (status bar, shade, power menu), or other (keyboard, overlays). */
     enum class WindowKind { APP, SYSTEM, OTHER }
 
-    /** One window on screen. `pkg` is only known for app windows. */
-    data class ScreenWindow(val kind: WindowKind, val bounds: Bounds, val pkg: String? = null)
+    /**
+     * One window on screen. `pkg` is only known for app windows. `pip`: it's
+     * a picture-in-picture window (the mini player YouTube shrinks into when
+     * the user goes home mid-video), moved and closed by the system, not the app.
+     */
+    data class ScreenWindow(val kind: WindowKind, val bounds: Bounds, val pkg: String? = null,
+                            val pip: Boolean = false)
 
     /**
      * The apps on screen and the area each one covers. Every app window

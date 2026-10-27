@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.graphics.Point
 import android.graphics.Rect
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -23,6 +24,7 @@ import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -69,6 +71,10 @@ class BlockerService : AccessibilityService() {
     private var windowApps = mapOf<Int, String>()
     // App -> its windows' contents, from the last read: searched for a blocked feed's player.
     private var appRoots = mapOf<String, List<AccessibilityNodeInfo>>()
+    // App in picture-in-picture -> that window's contents (null: unreadable), from the last read.
+    private var pipRoots = mapOf<String, AccessibilityNodeInfo?>()
+    // Apps in picture-in-picture that the system was already asked to close.
+    private val pipDismissed = mutableSetOf<String>()
     // Apps on screen whose feed is blocked: their content changes are watched.
     private var watchedFeeds = emptySet<String>()
     private val versions = mutableMapOf<String, Long>()  // feed app on screen -> its versionCode
@@ -77,7 +83,7 @@ class BlockerService : AccessibilityService() {
 
     /** What a wall shows (`feed`: the feed it's over, on a FEED wall); when it changes, the wall is built anew. */
     private data class Look(val kind: Storage.WallKind, val feed: Storage.Feed?, val size: Storage.WallSize,
-                            val popUp: Boolean, val homeButton: Boolean)
+                            val popUp: Boolean, val homeButton: Boolean, val pip: Boolean)
     private class Wall(val view: View, var bounds: Storage.Bounds, val look: Look)
     private data class Timer(val deadline: Long, val level: Int)
 
@@ -143,6 +149,7 @@ class BlockerService : AccessibilityService() {
         val list = try { windows } catch (e: Exception) { emptyList<AccessibilityWindowInfo>() }
         val apps = mutableMapOf<Int, String>()
         val roots = mutableMapOf<String, MutableList<AccessibilityNodeInfo>>()
+        val pips = mutableMapOf<String, AccessibilityNodeInfo?>()
         val out = list.map { w ->
             val r = Rect().also { w.getBoundsInScreen(it) }
             val kind = when (w.type) {
@@ -155,10 +162,13 @@ class BlockerService : AccessibilityService() {
                 else root?.packageName?.toString() ?: windowApps[w.id]
             if (pkg != null) apps[w.id] = pkg
             if (pkg != null && root != null) roots.getOrPut(pkg) { mutableListOf() } += root
-            Storage.ScreenWindow(kind, Storage.Bounds(r.left, r.top, r.right, r.bottom), pkg)
+            val pip = kind == Storage.WindowKind.APP && w.isInPictureInPictureMode
+            if (pip && pkg != null) pips[pkg] = root
+            Storage.ScreenWindow(kind, Storage.Bounds(r.left, r.top, r.right, r.bottom), pkg, pip)
         }
         windowApps = apps
         appRoots = roots
+        pipRoots = pips
         return out
     }
 
@@ -184,15 +194,18 @@ class BlockerService : AccessibilityService() {
         watchFeeds(feedApps)
         val kinds = Storage.wallKinds(plan.walled, feedApps.filter(::feedShowing).toSet())
         for (pkg in walls.keys.toList()) if (stepAside || pkg !in kinds) hideWall(pkg)
+        pipDismissed.retainAll(pipRoots.keys)
         if (!stepAside) for ((pkg, kind) in kinds) {
             val app = onScreen.getValue(pkg)
             val bounds = Storage.wallBounds(app, windows, screen.y)
             val popUp = Storage.isPopUp(app, screen.x, screen.y)
             // A pop-up leaves the rest of the screen usable: no button needed there.
             val feed = if (kind == Storage.WallKind.FEED) Feeds.feed(pkg) else null
+            val pip = kind == Storage.WallKind.SPENT && pkg in pipRoots
             val look = Look(kind, feed, Storage.wallSize(toDp(bounds.width), toDp(bounds.height)), popUp,
-                homeButton && !popUp)
+                homeButton && !popUp, pip)
             showWall(pkg, rules[pkg], bounds, look)
+            if (pip) dismissPip(pkg)
         }
 
         showTimers(plan.timed, rules)
@@ -361,12 +374,16 @@ class BlockerService : AccessibilityService() {
 
     // ------------------------------------------------------------------ walls
 
-    private fun wallParams(b: Storage.Bounds) = WindowManager.LayoutParams(
+    // Over a picture-in-picture window, touches go through to it: the system
+    // handles every touch there (drag, fling away, its close button), the
+    // app none, so the user can close it without being able to use it.
+    private fun wallParams(b: Storage.Bounds, look: Look) = WindowManager.LayoutParams(
         b.right - b.left, b.bottom - b.top,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            (if (look.pip) WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else 0),
         PixelFormat.OPAQUE
     ).apply {
         gravity = Gravity.TOP or Gravity.START
@@ -380,12 +397,13 @@ class BlockerService : AccessibilityService() {
     /** Cover `pkg`'s window with the block wall, or move its wall to where the window now is. */
     private fun showWall(pkg: String, rule: Rule?, bounds: Storage.Bounds, look: Look) {
         val wm = getSystemService(WindowManager::class.java)
+        if (pkg !in walls && look.kind == Storage.WallKind.SPENT) pauseMedia(pkg)
         walls[pkg]?.let { wall ->
             // Crossing into another layout (split <-> full screen <-> pop-up) rebuilds it.
             if (wall.look == look) {
                 if (wall.bounds == bounds) return
                 wall.bounds = bounds
-                try { wm.updateViewLayout(wall.view, wallParams(bounds)) } catch (e: Exception) {}
+                try { wm.updateViewLayout(wall.view, wallParams(bounds, look)) } catch (e: Exception) {}
                 return
             }
             hideWall(pkg)
@@ -393,12 +411,42 @@ class BlockerService : AccessibilityService() {
         Log.i(TAG, "blocking $pkg (${look.kind}) at $bounds")
         val view = wallView(pkg, rule, look)
         try {
-            wm.addView(view, wallParams(bounds))
+            wm.addView(view, wallParams(bounds, look))
         } catch (e: Exception) {
             Log.w(TAG, "couldn't draw the wall over $pkg", e)
             return
         }
         walls[pkg] = Wall(view, bounds, look)
+    }
+
+    /**
+     * A wall just went up over `pkg`: pause what's playing, so the video
+     * doesn't play on behind it, and pressing home doesn't shrink it into a
+     * picture-in-picture window (YouTube only does that mid-video). The
+     * pause key goes to whichever app last played, so it's only sent while
+     * something is playing.
+     */
+    private fun pauseMedia(pkg: String) {
+        val audio = getSystemService(AudioManager::class.java)
+        if (!audio.isMusicActive) return
+        Log.i(TAG, "pausing media for $pkg")
+        for (action in listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
+            audio.dispatchMediaKeyEvent(KeyEvent(action, KeyEvent.KEYCODE_MEDIA_PAUSE))
+        }
+    }
+
+    /**
+     * Close `pkg`'s picture-in-picture window, once per time it shows: the
+     * system gives that window a dismiss action for screen readers. If it
+     * doesn't (or ignores it), the user drags it away through the wall.
+     */
+    private fun dismissPip(pkg: String) {
+        if (!pipDismissed.add(pkg)) return
+        val root = pipRoots[pkg] ?: return
+        val action = AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS
+        val actions = try { root.actionList } catch (e: Exception) { emptyList() }
+        val done = action in actions && try { root.performAction(action.id) } catch (e: Exception) { false }
+        Log.i(TAG, "picture-in-picture $pkg: actions ${actions.map { it.id to it.label }}, dismissed $done")
     }
 
     private fun hideWall(pkg: String) {
@@ -470,8 +518,10 @@ class BlockerService : AccessibilityService() {
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, 16) })
             // The wall covers a pop-up's own close button and handle (they're
             // drawn inside its window), so say how else to close it. A feed
-            // wall has the back button below instead.
-            if (look.popUp && feed == null) addView(Ui.muted(context, "To close it, swipe it away in Recents.",
+            // wall has the back button below instead. A picture-in-picture
+            // window takes touches through the wall, so it's closed as usual.
+            if (look.popUp && feed == null) addView(Ui.muted(context,
+                if (look.pip) "Drag it to the ✕ to close it." else "To close it, swipe it away in Recents.",
                 if (full) 14f else if (tiny) 11f else 13f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, if (tiny) 8 else 16) })
@@ -506,6 +556,8 @@ class BlockerService : AccessibilityService() {
         for (pkg in walls.keys.toList()) hideWall(pkg)
         onScreen = emptyMap()
         appRoots = emptyMap()
+        pipRoots = emptyMap()
+        pipDismissed.clear()
         watchedFeeds = emptySet()
         try { unregisterReceiver(screenReceiver) } catch (e: Exception) {}
         Log.i(TAG, "disconnected")
