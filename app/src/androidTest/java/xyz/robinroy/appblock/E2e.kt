@@ -96,7 +96,7 @@ object E2e {
         shell("dumpsys deviceidle whitelist +$pkg")
         shell("pm grant $pkg android.permission.POST_NOTIFICATIONS")
         device.findObject(text("Go to home screen"))?.click()
-        for (app in listOf(CLOCK, PHONE)) shell("am force-stop $app")
+        for (app in listOf(CLOCK, PHONE, FIXTURE)) shell("am force-stop $app")
         // Switch the blocker off before wiping: a session still open from the
         // last test would otherwise be written into the wiped storage a few
         // seconds later ("1 min used" in a test that never opened the app).
@@ -107,6 +107,7 @@ object E2e {
         Storage.setOnboardingSeen(ctx)
         Storage.saveRules(ctx, rules)
         Feeds.useForTests(null)
+        BlockerService.closePipForTests(true)
         setBlocker(true)
         openHome()
         device.pressHome()
@@ -180,6 +181,27 @@ object E2e {
                 (device.findObject(By.pkg(pkg))?.let { windowBounds(it).width() < device.displayWidth } ?: false)
         }) { "$pkg didn't open as a pop-up" }
     }
+
+    /**
+     * Open the fixture's video (fixture/, like YouTube's watch page) and
+     * wait until it plays: going home then shrinks it into picture-in-picture.
+     */
+    fun playVideo() {
+        shell("am start -W -n $FIXTURE/.VideoActivity")
+        waitFor(By.pkg(FIXTURE).text("Playing"))
+    }
+
+    /** The text on the block wall over `pkg`, read from the blocker itself (BlockerService.wallTextForTests), or null without one. */
+    fun wallText(pkg: String): List<String>? {
+        var text: List<String>? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            text = BlockerService.instance?.wallTextForTests(pkg)
+        }
+        return text
+    }
+
+    /** Whether `pkg` is in picture-in-picture (the mini player), per the window manager. */
+    fun inPip(pkg: String): Boolean = windowingMode(pkg) == "pinned"
 
     /** Resize `pkg`'s pop-up to `widthDp` x `heightDp`, in the top right corner. */
     fun resizePopUp(pkg: String, widthDp: Int, heightDp: Int) {

@@ -306,6 +306,64 @@ class StorageTest {
         assertFalse(Storage.isPopUp(Storage.Bounds(0, 0, 2274, 1080), 2400, 1080))
     }
 
+    private val mini = Storage.Bounds(441, 489, 1032, 822)   // YouTube's mini player on the phone
+    private fun pipWindow(pkg: String) = Storage.ScreenWindow(Storage.WindowKind.APP, mini, pkg, pip = true)
+
+    @Test
+    fun `picture-in-picture - the apps in a mini player, not those in a pop-up or full screen`() {
+        assertEquals(setOf(yt), Storage.pipApps(listOf(app("com.android.launcher3", screen), pipWindow(yt), statusBar)))
+        // A pop-up the same size is still the app's own window.
+        assertEquals(emptySet<String>(), Storage.pipApps(listOf(app(yt, mini), app(insta, screen))))
+        assertEquals(emptySet<String>(), Storage.pipApps(emptyList()))
+        // Only app windows count, and only those whose app is known.
+        assertEquals(emptySet<String>(), Storage.pipApps(listOf(
+            Storage.ScreenWindow(Storage.WindowKind.OTHER, mini, yt, pip = true),
+            Storage.ScreenWindow(Storage.WindowKind.APP, mini, pkg = null, pip = true))))
+    }
+
+    @Test
+    fun `wall touches - through to a spent app's mini player only`() {
+        assertTrue(Storage.wallPassesTouches(Storage.WallKind.SPENT, pip = true))
+        // Full screen, split or a pop-up: the app would be usable through it.
+        assertFalse(Storage.wallPassesTouches(Storage.WallKind.SPENT, pip = false))
+        // A feed wall keeps its own "Go back" button, mini player or not.
+        assertFalse(Storage.wallPassesTouches(Storage.WallKind.FEED, pip = true))
+        assertFalse(Storage.wallPassesTouches(Storage.WallKind.FEED, pip = false))
+    }
+
+    @Test
+    fun `pause - as a spent app's wall first goes up, while something plays`() {
+        assertTrue(Storage.pauseOnWall(Storage.WallKind.SPENT, alreadyWalled = false, playing = true))
+        // Nothing playing: the pause would go to some other app, or nowhere.
+        assertFalse(Storage.pauseOnWall(Storage.WallKind.SPENT, alreadyWalled = false, playing = false))
+        // The same wall moved, resized or redrawn: the user may have played something since.
+        assertFalse(Storage.pauseOnWall(Storage.WallKind.SPENT, alreadyWalled = true, playing = true))
+        // A feed wall: the rest of the app is still open, and so is what it plays.
+        assertFalse(Storage.pauseOnWall(Storage.WallKind.FEED, alreadyWalled = false, playing = true))
+    }
+
+    @Test
+    fun `picture-in-picture close - a walled spent app's, once while it's up, again if it comes back`() {
+        val spent = mapOf(yt to Storage.WallKind.SPENT)
+        assertEquals(setOf(yt), Storage.pipsToClose(spent, pip = setOf(yt), asked = emptySet()))
+        // Asked already, and still up: the system ignored it, the user drags it away.
+        assertEquals(emptySet<String>(), Storage.pipsToClose(spent, pip = setOf(yt), asked = setOf(yt)))
+        // Walled but not in picture-in-picture, or in it but not walled, or walled for its feed.
+        assertEquals(emptySet<String>(), Storage.pipsToClose(spent, pip = emptySet(), asked = emptySet()))
+        assertEquals(emptySet<String>(), Storage.pipsToClose(emptyMap(), pip = setOf(yt), asked = emptySet()))
+        assertEquals(emptySet<String>(),
+            Storage.pipsToClose(mapOf(yt to Storage.WallKind.FEED), pip = setOf(yt), asked = emptySet()))
+        // Two at once: each its own.
+        assertEquals(setOf(insta), Storage.pipsToClose(spent + (insta to Storage.WallKind.SPENT),
+            pip = setOf(yt, insta), asked = setOf(yt)))
+
+        // Remembered while it's up; forgotten once it's gone, so it's asked again next time.
+        assertEquals(setOf(yt), Storage.pipsAsked(emptySet(), pip = setOf(yt), closing = setOf(yt)))
+        assertEquals(setOf(yt), Storage.pipsAsked(setOf(yt), pip = setOf(yt), closing = emptySet()))
+        assertEquals(emptySet<String>(), Storage.pipsAsked(setOf(yt), pip = emptySet(), closing = emptySet()))
+        assertEquals(setOf(yt), Storage.pipsAsked(setOf(yt, insta), pip = setOf(yt), closing = emptySet()))
+    }
+
     @Test
     fun `plan - spent apps walled, other limited apps timed, the rest left alone`() {
         val rules = mapOf(insta to Rule(5, 120), yt to Rule(10, 60))

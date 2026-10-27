@@ -5,20 +5,26 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
 import xyz.robinroy.appblock.E2e.PHONE
 import xyz.robinroy.appblock.E2e.CLOCK
+import xyz.robinroy.appblock.E2e.FIXTURE
 import xyz.robinroy.appblock.E2e.appears
 import xyz.robinroy.appblock.E2e.device
 import xyz.robinroy.appblock.E2e.ctx
+import xyz.robinroy.appblock.E2e.eventually
 import xyz.robinroy.appblock.E2e.freshState
 import xyz.robinroy.appblock.E2e.homeScreenPackage
+import xyz.robinroy.appblock.E2e.inPip
+import xyz.robinroy.appblock.E2e.isOnScreen
 import xyz.robinroy.appblock.E2e.min
 import xyz.robinroy.appblock.E2e.openApp
 import xyz.robinroy.appblock.E2e.openAsPopUp
+import xyz.robinroy.appblock.E2e.playVideo
 import xyz.robinroy.appblock.E2e.resizePopUp
 import xyz.robinroy.appblock.E2e.seedUsage
 import xyz.robinroy.appblock.E2e.shell
 import xyz.robinroy.appblock.E2e.splitScreenWith
 import xyz.robinroy.appblock.E2e.text
 import xyz.robinroy.appblock.E2e.textContains
+import xyz.robinroy.appblock.E2e.wallText
 import xyz.robinroy.appblock.E2e.waitFor
 import xyz.robinroy.appblock.E2e.windowBounds
 import org.junit.Assert.assertEquals
@@ -32,8 +38,9 @@ import java.util.regex.Pattern
 /**
  * The core promise, end to end: the blocker service watching the real apps
  * on screen and drawing the block wall over a spent one, full screen, in
- * split screen and in a pop-up window. Budgets are seeded into the usage
- * log so no test waits out real minutes.
+ * split screen and in a pop-up window, and a video's (the fixture's, like
+ * YouTube's) as it plays or in picture-in-picture. Budgets are seeded into
+ * the usage log so no test waits out real minutes.
  */
 @RunWith(AndroidJUnit4::class)
 class BlockingE2eTest {
@@ -43,6 +50,8 @@ class BlockingE2eTest {
     val leave = E2e.Cleanup {
         device.findObject(text("Go to home screen"))?.click()
         shell("settings put global enable_freeform_support 0")
+        shell("am force-stop $FIXTURE")
+        BlockerService.closePipForTests(true)
         device.pressHome()
     }
 
@@ -52,6 +61,7 @@ class BlockingE2eTest {
     private val wall = textContains("Clock is blocked")
     // The small pop-up's wall, case and all ("Clock is blocked." ends the same).
     private val shortWall = By.text(Pattern.compile("Blocked\\..*", Pattern.DOTALL))
+    private val videoWall = textContains("Feed fixture is blocked")
 
     @Test
     fun spentBudget_wallCoversTheApp_andSendsYouHome() {
@@ -204,7 +214,64 @@ class BlockingE2eTest {
         device.pressBack()
     }
 
+    @Test
+    fun timeRunsOutMidVideo_videoPauses_andHomeOpensNoMiniPlayer() {
+        freshState(mapOf(FIXTURE to Rule(allowMin = 1, windowMin = 120)))
+        // Ten seconds left: the video is playing when they run out.
+        seedUsage(FIXTURE, startAgo = 50_000, endAgo = 0, windowMin = 120)
+
+        playVideo()
+
+        assertTrue("never blocked once the budget ran out", appears(videoWall, timeout = 30_000))
+        waitFor(By.pkg(FIXTURE).text("Paused"))
+        device.pressHome()
+        assertTrue(appears(By.pkg(homeScreenPackage())))
+        // Paused, it doesn't shrink into a mini player on the way home.
+        assertFalse("the video went into picture-in-picture", eventually(timeout = 3_000) { inPip(FIXTURE) })
+    }
+
+    @Test
+    fun timeRunsOutInTheMiniPlayer_itsClosedForYou() {
+        freshState(mapOf(FIXTURE to Rule(allowMin = 1, windowMin = 120)))
+        seedUsage(FIXTURE, startAgo = 45_000, endAgo = 0, windowMin = 120)
+        playVideo()
+        device.pressHome()
+        check(eventually { inPip(FIXTURE) }) { "the playing video didn't go into picture-in-picture" }
+
+        // Its time runs out in the mini player, and the blocker closes it.
+        assertTrue("the mini player is still up after its time ran out",
+            eventually(timeout = 30_000) { !isOnScreen(FIXTURE) })
+        assertFalse(inPip(FIXTURE))
+    }
+
+    @Test
+    fun miniPlayerLeftOpen_wallSaysDragIt_andItDragsAwayThroughTheWall() {
+        freshState(mapOf(FIXTURE to Rule(allowMin = 1, windowMin = 120)))
+        // As if the system ignored the blocker's close.
+        BlockerService.closePipForTests(false)
+        seedUsage(FIXTURE, startAgo = 45_000, endAgo = 0, windowMin = 120)
+        playVideo()
+        device.pressHome()
+        check(eventually { inPip(FIXTURE) }) { "the playing video didn't go into picture-in-picture" }
+
+        // A wall that lets touches through is left out of the accessibility
+        // window list, so its text is read from the blocker.
+        assertTrue("no wall over the mini player once its time ran out",
+            eventually(timeout = 30_000) { wallText(FIXTURE) != null })
+        val wall = wallText(FIXTURE)!!
+        assertTrue(wall.toString(), wall.first().startsWith("Blocked."))
+        assertTrue(wall.toString(), DRAG_PIP in wall)
+        assertFalse(wall.toString(), CLOSE_POP_UP in wall)
+        // Dragged from its middle, under the wall, onto the system's close
+        // target at the bottom of the screen: the wall lets the drag through.
+        val pip = windowBounds(waitFor(By.pkg(FIXTURE)))
+        device.drag(pip.centerX(), pip.centerY(), device.displayWidth / 2, device.displayHeight * 11 / 12, 300)
+        assertTrue("the mini player didn't close", eventually { !isOnScreen(FIXTURE) })
+        assertTrue("the wall stayed up", eventually { wallText(FIXTURE) == null })
+    }
+
     private companion object {
         const val CLOSE_POP_UP = "To close it, swipe it away in Recents."
+        const val DRAG_PIP = "Drag it to the ✕ to close it."
     }
 }

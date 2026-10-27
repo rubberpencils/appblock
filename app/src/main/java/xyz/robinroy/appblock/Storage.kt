@@ -312,6 +312,46 @@ object Storage {
     fun wallKinds(spent: Set<String>, feedShowing: Set<String>): Map<String, WallKind> =
         feedShowing.associateWith { WallKind.FEED } + spent.associateWith { WallKind.SPENT }
 
+    // ---- picture-in-picture: the mini player YouTube shrinks into when the user goes home mid-video ----
+
+    /** The apps with a picture-in-picture window on screen. */
+    fun pipApps(windows: List<ScreenWindow>): Set<String> =
+        windows.filter { it.kind == WindowKind.APP && it.pip }.mapNotNull { it.pkg }.toSet()
+
+    /**
+     * Whether a wall lets touches through to the window under it: only over
+     * a spent app in picture-in-picture. The system handles every touch
+     * there (dragging it, flinging it away, its close button) and the app
+     * none, so the user can close it without being able to use it. Every
+     * other wall takes its touches: a pop-up's app is usable inside it.
+     */
+    fun wallPassesTouches(kind: WallKind, pip: Boolean) = kind == WallKind.SPENT && pip
+
+    /**
+     * Whether to pause what's playing as a wall goes up: a spent app's
+     * first wall (not the same wall moved or redrawn), while something
+     * plays. Paused, a video doesn't play on behind the wall, and going
+     * home doesn't shrink it into picture-in-picture (YouTube only does that
+     * mid-video). The pause goes to whichever app played last, so it's not
+     * sent when nothing is playing, and a feed wall leaves the rest of the
+     * app (and what it plays) alone.
+     */
+    fun pauseOnWall(kind: WallKind, alreadyWalled: Boolean, playing: Boolean) =
+        kind == WallKind.SPENT && !alreadyWalled && playing
+
+    /**
+     * The spent apps whose picture-in-picture window to close now: those
+     * walled in one that weren't asked to close it while it's been up
+     * (`asked`). Asked once: if the system ignores it, the user drags it
+     * away through the wall instead.
+     */
+    fun pipsToClose(kinds: Map<String, WallKind>, pip: Set<String>, asked: Set<String>): Set<String> =
+        kinds.filterValues { it == WallKind.SPENT }.keys.filter { it in pip && it !in asked }.toSet()
+
+    /** The apps asked to close their picture-in-picture window, after `closing` were: one that's gone may be asked again. */
+    fun pipsAsked(asked: Set<String>, pip: Set<String>, closing: Set<String>): Set<String> =
+        asked.intersect(pip) + closing
+
     /**
      * Whether Settings' list of enabled accessibility services (the
      * colon-separated `enabled_accessibility_services` value) has ours in it.

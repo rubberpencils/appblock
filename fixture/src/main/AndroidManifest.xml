@@ -17,5 +17,10 @@
                 <data android:scheme="https" android:host="fixture.appblock.invalid" android:pathPrefix="/reel/" />
             </intent-filter>
         </activity>
+        <!-- Like YouTube's watch page: a playing video shrinks into
+             picture-in-picture on the way home (BlockingE2eTest) -->
+        <activity android:name=".VideoActivity" android:exported="true"
+            android:supportsPictureInPicture="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation" />
     </application>
 </manifest>

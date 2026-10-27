@@ -2,8 +2,10 @@
 // home screen with a small "Shorts shelf" and a small Explore-style reel
 // tile, a Shorts screen and a Reels screen (also opened by a reel link)
 // whose player fills the window, all with the view ids YouTube's and
-// Instagram's players have. The real apps need the network and an account,
-// show ads, and change under us; this doesn't.
+// Instagram's players have. And for BlockingE2eTest, a video that plays
+// and shrinks into picture-in-picture on the way home, like YouTube's.
+// The real apps need the network and an account, show ads, and change
+// under us; this doesn't.
 // connectedDebugAndroidTest installs it (app/build.gradle.kts).
 plugins {
     id("com.android.application")
