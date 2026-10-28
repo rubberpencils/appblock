@@ -1,0 +1,14 @@
+body {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  font: 1rem/1.6 system-ui, sans-serif;
+  color: #1a1a1a;
+  background: #fff;
+}
+@media (prefers-color-scheme: dark) {
+  body { color: #e6e6e6; background: #121212; }
+  a { color: #8ab4f8; }
+}
+nav { margin-bottom: 2rem; }
+nav a { margin-right: 1rem; }

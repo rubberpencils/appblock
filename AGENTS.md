@@ -158,7 +158,7 @@ The Reels tab, a reel from Explore and a reel link all open the same
 player. There's no Instagram canary: the real Instagram needs an account,
 so check a Reels rule change on a phone. The app bundles the rules and
 fetches newer ones from `https://appblock.robinroy.xyz/v1/rules.signed.json`. That's GitHub Pages
-for this repo (a CNAME at Namecheap); the `Publish rules` workflow deploys
+for this repo (a CNAME at Namecheap); the `Publish site` workflow deploys
 `rules/<format>/rules.signed.json` there on every push to `main` that
 changes `rules/`. `v1` is the rules format: a build fetches only the one it
 reads, so a new format goes in `rules/v2/` for the builds that read it,
@@ -182,7 +182,7 @@ and `v1` keeps being served to older ones.
   if it may have leaked, tell the maintainer at once: the fix is an app
   update with a new key.
 - The rules go live for every user once `rules/v1/rules.signed.json` is
-  on `main` and `Publish rules` has run. A rule only names view ids to look
+  on `main` and `Publish site` has run. A rule only names view ids to look
   for in an app whose feed the user blocked; a bad one can at worst wall
   YouTube wrongly, and re-signing the old content (a newer `updated`)
   rolls it back.
@@ -199,6 +199,19 @@ and `v1` keeps being served to older ones.
   same daily and on rules changes; it's not a required check (it needs the
   network, and YouTube changes under us), and it reads YouTube's APK from
   a private repo release (secrets `YOUTUBE_APKS_REPO`, `YOUTUBE_APKS_TOKEN`).
+
+## Website
+
+The same Pages site serves the pages in `web/` at its root: `web/index.html`
+is `appblock.robinroy.xyz/`, `web/privacy/index.html` is `/privacy/` (the
+Play Store listing links to it). Plain HTML and one `style.css`, no
+generator. `Publish site` copies `web/` as is, then the signed rules on top,
+on every push to `main` that changes `web/` or `rules/`. It refuses a
+`web/v1/` (or any folder named like a rules format: that path is the
+rules') and a missing privacy page. Preview with
+`python3 -m http.server -d web`. When a change touches what the app
+collects, sends or asks permission for (the manifest, usage access, the
+rules fetch, backups), update the privacy policy in the same commit.
 
 ## Conventions
 
