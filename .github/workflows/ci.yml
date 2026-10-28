@@ -6,15 +6,16 @@ name: CI
 # per trigger. Pushes to main only, not tags: a bare `push:` also fires on
 # tags, so publishing a release re-ran CI on a commit that had already
 # passed. Docs-only pushes to main (README, screenshots, licence, issue
-# templates) can't break the app, so they skip CI. Pull requests always run
-# it: main requires these checks to pass before a PR merges, and a skipped
-# run would leave the PR waiting.
+# templates, the website in web/) can't break the app, so they skip CI.
+# Pull requests always run it: main requires these checks to pass before a
+# PR merges, and a skipped run would leave the PR waiting.
 on:
   push:
     branches: [main]
     paths-ignore:
       - "**.md"
       - "public/**"
+      - "web/**"
       - "LICENSE"
       - ".github/ISSUE_TEMPLATE/**"
   pull_request:
