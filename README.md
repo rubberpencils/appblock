@@ -1,6 +1,3 @@
-> [!IMPORTANT]
-> This was written entirely with AI, and I haven't verified any of the code. Please use it with caution — though I do trust [Claude's Plan](https://www.youtube.com/watch?v=gFx-NjTw3sM). The app will go on the Play Store after I do a manual security and performance audit. All apps from me will be held to the highest quality standards. I will not ship slop.
-
 # appblock
 
 | ![AppBlock home screen](public/home.jpg) | ![Blocked screen](public/blocked.jpg) |
