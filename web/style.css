@@ -12,3 +12,88 @@ body {
 }
 nav { margin-bottom: 2rem; }
 nav a { margin-right: 1rem; }
+.steps { padding-left: 1.5rem; }
+.steps li { margin-bottom: 1rem; }
+.note {
+  margin: 2rem 0;
+  padding: 1rem;
+  border-left: 4px solid #1a73e8;
+  background: #e8f0fe;
+}
+@media (prefers-color-scheme: dark) {
+  .note { border-color: #8ab4f8; background: #1e2a3a; }
+}
+.copy {
+  margin-left: 0.25rem;
+  padding: 0.2rem;
+  vertical-align: middle;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.copy:hover { background: rgba(0, 0, 0, 0.1); }
+.copy[data-copied]::after { content: " Copied!"; font-size: 0.85rem; }
+@media (prefers-color-scheme: dark) {
+  .copy:hover { background: rgba(255, 255, 255, 0.15); }
+}
+.email-menu {
+  position: relative;
+  display: inline-block;
+}
+.email-menu__trigger {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #0000ee;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.email-menu__list {
+  position: absolute;
+  z-index: 10;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  max-width: min(16rem, 80vw);
+  border: 1px solid #aaa;
+  border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+  font-size: 0.85em;
+  line-height: 1.35;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 0.2rem);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 120ms;
+}
+.email-menu__list a,
+.email-menu__list button {
+  border: 0;
+  padding: 0.45rem 0.65rem;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.email-menu__list a:hover,
+.email-menu__list button:hover { background: rgba(128, 128, 128, 0.12); }
+.email-menu.open .email-menu__list {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+@media (prefers-color-scheme: dark) {
+  .email-menu__trigger { color: #8ab4f8; }
+  .email-menu__list { background: #121212; }
+}

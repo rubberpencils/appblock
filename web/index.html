@@ -9,6 +9,107 @@
 <body>
   <nav><a href="/">AppBlock</a><a href="/privacy/">Privacy</a></nav>
   <h1>AppBlock</h1>
+  <p>Hi, and thank you for being a beta tester! Your feedback shapes
+  AppBlock before it reaches everyone on Google Play.</p>
+
+  <h2>Get the test version</h2>
+  <p>AppBlock is in closed testing on Google Play. Three steps, on your
+  Android phone. Use the Google account your Play Store is signed in with
+  for all three.</p>
+
+  <ol class="steps">
+    <li>
+      <strong>Join the testers group.</strong>
+      Open <a href="https://groups.google.com/g/appblock-testers" target="_blank" rel="noopener">appblock-testers</a>
+      and tap <em>Join group</em>.
+    </li>
+    <li>
+      <strong>Become a tester.</strong>
+      Open the <a href="https://play.google.com/apps/testing/xyz.robinroy.appblock" target="_blank" rel="noopener">testing page</a>
+      and tap <em>Become a tester</em>.
+    </li>
+    <li>
+      <strong>Install AppBlock.</strong>
+      Open <a href="https://play.google.com/store/apps/details?id=xyz.robinroy.appblock" target="_blank" rel="noopener">AppBlock on Google Play</a>
+      and tap <em>Install</em>. If Play says the app isn't available, wait a
+      few minutes and try again.
+    </li>
+  </ol>
+
+  <aside class="note">
+    <strong>Know someone who'd like to try it?</strong>
+    Share this page, <a id="page-url" href="/">this page</a><button
+      id="copy-url" class="copy" type="button" title="Copy link"
+      aria-label="Copy link" hidden><svg viewBox="0 0 24 24" width="16"
+      height="16" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2
+      2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2
+      0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg></button>,
+    not the Play Store or group links. Those only work after the steps
+    above, in order.
+  </aside>
+  <script>
+    const pageUrl = document.getElementById("page-url");
+    const copyUrl = document.getElementById("copy-url");
+    pageUrl.href = location.origin + location.pathname;
+    pageUrl.textContent = location.host + location.pathname.replace(/\/$/, "");
+    if (navigator.clipboard) {
+      copyUrl.hidden = false;
+      copyUrl.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(pageUrl.href);
+        copyUrl.dataset.copied = "";
+        copyUrl.title = "Copied!";
+        setTimeout(() => {
+          delete copyUrl.dataset.copied;
+          copyUrl.title = "Copy link";
+        }, 2000);
+      });
+    }
+  </script>
+
   <p><a href="https://github.com/rubberpencils/appblock">Source on GitHub</a></p>
+
+  <p>Any queries? Email <span class="email-menu"><button type="button"
+    class="email-menu__trigger">support@robinroy.xyz</button><span
+    class="email-menu__list"><button type="button" class="email-menu__copy"
+    data-email="support@robinroy.xyz">Copy support@robinroy.xyz</button><a
+    href="mailto:support@robinroy.xyz">Open default client</a></span></span></p>
+  <script>
+    (function () {
+      function closeAll() {
+        document.querySelectorAll(".email-menu.open").forEach(function (menu) {
+          menu.classList.remove("open");
+        });
+      }
+
+      document.addEventListener("click", function (event) {
+        var trigger = event.target.closest(".email-menu__trigger");
+        if (trigger) {
+          var menu = trigger.parentElement;
+          var wasOpen = menu.classList.contains("open");
+          closeAll();
+          if (!wasOpen) menu.classList.add("open");
+          return;
+        }
+
+        var copy = event.target.closest(".email-menu__copy");
+        if (copy) {
+          navigator.clipboard.writeText(copy.dataset.email).then(function () {
+            var label = copy.textContent;
+            copy.textContent = "Copied!";
+            setTimeout(function () {
+              copy.textContent = label;
+            }, 1000);
+          });
+          return;
+        }
+
+        if (!event.target.closest(".email-menu")) closeAll();
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") closeAll();
+      });
+    })();
+  </script>
 </body>
 </html>
