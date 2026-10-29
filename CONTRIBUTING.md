@@ -2,13 +2,13 @@
 
 **Please open issues, not pull requests.**
 
-This project was written entirely with AI. I don't know the codebase well enough to
-review your code, so I can't responsibly verify and merge PRs — especially for an app
-that can see which apps you use and draw over them on my (and your) phone.
+AppBlock can see which apps you use and draw over them, on my phone and yours, so
+every line of it needs to be code I can stand behind. I'd rather write changes myself
+than review and merge outside code.
 
 What works instead: **open a good issue.** Bug reports, feature requests, UX
 complaints, edge cases you hit — all welcome. If the issue is clear and worth doing,
-I'll implement it (well, the AI will) and it ships.
+I'll implement it and it ships.
 
 A good issue has:
 
