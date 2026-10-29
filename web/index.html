@@ -38,7 +38,7 @@
 
   <aside class="note">
     <strong>Know someone who'd like to try it?</strong>
-    Share this page, <a id="page-url" href="/">this page</a><button
+    Share this page, <a id="page-url" href="/" target="_blank" rel="noopener">this page</a><button
       id="copy-url" class="copy" type="button" title="Copy link"
       aria-label="Copy link" hidden><svg viewBox="0 0 24 24" width="16"
       height="16" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2
@@ -53,8 +53,8 @@
     pageUrl.href = location.origin + location.pathname;
     pageUrl.textContent = location.host + location.pathname.replace(/\/$/, "");
     if (navigator.clipboard) {
-      copyUrl.hidden = false;
-      copyUrl.addEventListener("click", async () => {
+      const copy = async (event) => {
+        event.preventDefault();
         await navigator.clipboard.writeText(pageUrl.href);
         copyUrl.dataset.copied = "";
         copyUrl.title = "Copied!";
@@ -62,54 +62,21 @@
           delete copyUrl.dataset.copied;
           copyUrl.title = "Copy link";
         }, 2000);
-      });
+      };
+      copyUrl.hidden = false;
+      copyUrl.addEventListener("click", copy);
+      pageUrl.addEventListener("click", copy);
+      pageUrl.title = "Copy link";
     }
   </script>
 
-  <p><a href="https://github.com/rubberpencils/appblock">Source on GitHub</a></p>
+  <p><a href="https://github.com/rubberpencils/appblock" target="_blank" rel="noopener">Source on GitHub</a></p>
 
   <p>Any queries? Email <span class="email-menu"><button type="button"
     class="email-menu__trigger">support@robinroy.xyz</button><span
     class="email-menu__list"><button type="button" class="email-menu__copy"
     data-email="support@robinroy.xyz">Copy support@robinroy.xyz</button><a
     href="mailto:support@robinroy.xyz">Open default client</a></span></span></p>
-  <script>
-    (function () {
-      function closeAll() {
-        document.querySelectorAll(".email-menu.open").forEach(function (menu) {
-          menu.classList.remove("open");
-        });
-      }
-
-      document.addEventListener("click", function (event) {
-        var trigger = event.target.closest(".email-menu__trigger");
-        if (trigger) {
-          var menu = trigger.parentElement;
-          var wasOpen = menu.classList.contains("open");
-          closeAll();
-          if (!wasOpen) menu.classList.add("open");
-          return;
-        }
-
-        var copy = event.target.closest(".email-menu__copy");
-        if (copy) {
-          navigator.clipboard.writeText(copy.dataset.email).then(function () {
-            var label = copy.textContent;
-            copy.textContent = "Copied!";
-            setTimeout(function () {
-              copy.textContent = label;
-            }, 1000);
-          });
-          return;
-        }
-
-        if (!event.target.closest(".email-menu")) closeAll();
-      });
-
-      document.addEventListener("keydown", function (event) {
-        if (event.key === "Escape") closeAll();
-      });
-    })();
-  </script>
+  <script src="/email-menu.js"></script>
 </body>
 </html>
