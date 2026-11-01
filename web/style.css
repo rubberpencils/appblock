@@ -23,6 +23,74 @@ nav a { margin-right: 1rem; }
 @media (prefers-color-scheme: dark) {
   .note { border-color: #8ab4f8; background: #1e2a3a; }
 }
+.note--wait {
+  margin: 1rem 0 0;
+  border-color: #f9ab00;
+  background: #fef7e0;
+}
+@media (prefers-color-scheme: dark) {
+  .note--wait { border-color: #fdd663; background: #3a3220; }
+}
+.shot-btn {
+  display: inline-block;
+  margin: 0.15rem 0 0 0.25rem;
+  padding: 0.1rem 0.6rem;
+  border: 1px solid #1a73e8;
+  border-radius: 999px;
+  background: #fff;
+  color: #1a73e8;
+  font: inherit;
+  font-size: 0.85em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.shot-btn:hover { background: #e8f0fe; }
+@media (prefers-color-scheme: dark) {
+  .shot-btn { border-color: #8ab4f8; background: #121212; color: #8ab4f8; }
+  .shot-btn:hover { background: #1e2a3a; }
+}
+/* Full screen; the image fits inside it whatever the window's shape. */
+.shot-viewer {
+  box-sizing: border-box;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 3.5rem 1rem 1rem;
+  border: 0;
+  background: none;
+}
+.shot-viewer[open] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shot-viewer::backdrop { background: rgba(0, 0, 0, 0.8); }
+.shot-viewer img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+}
+.shot-viewer__close {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  color: #1a1a1a;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
 .copy {
   margin-left: 0.25rem;
   padding: 0.2rem;
