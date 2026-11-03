@@ -35,6 +35,42 @@ Force-stopping AppBlock (App info > Force stop) switches its accessibility servi
 off; that's an Android rule. Blocking pauses, rules kept, until you switch it back
 on from the checklist in AppBlock.
 
+## Strict mode
+
+For when you don't trust yourself not to switch AppBlock off. Tap **Strict mode**
+on the home screen and pick your way out:
+
+- **Plug in to unlock:** the Turn off button only works while the phone is
+  plugged in.
+- **Cooldown:** tap Stop, wait out a timer you chose (minutes, hours or days),
+  and it's off. Change your mind any time before then.
+
+While it's on:
+
+- AppBlock is a device admin (with no admin powers), so Android won't uninstall
+  it: not from the launcher, the Play Store or adb.
+- The pages that could switch it off get the wall: AppBlock's App info (Force
+  stop, Clear storage), its Accessibility switch, the uninstall prompt, the
+  device admin page, Safety Center's "Remove access". It finds them by looking
+  for its own name on the screens of Settings, the package installer and the
+  permission controller. The rest of Settings (Wi-Fi, Bluetooth...) stays usable.
+- Limits only get stricter: lowering an allowance or adding an app works; raising
+  one, removing an app or unblocking Shorts waits until strict mode is off.
+- Optional **emergency passes** ("5 min in any day", say) open your blocked apps
+  for a bit without ending strict mode. Stop one early to save the rest.
+
+Setting the phone's clock to skip a cooldown starts it over. Strict mode isn't
+restored from a backup: on a new phone it starts off.
+
+It's never a trap. Besides your way out:
+
+- **Safe mode** (hold power, long-press Power off, Reboot to safe mode) runs
+  without AppBlock. Switch off its device admin in Settings there; back in normal
+  mode, strict mode ends and a notification says so.
+- **adb**, for developers:
+  `adb shell am broadcast -a xyz.robinroy.appblock.END_STRICT -n xyz.robinroy.appblock/.EndStrictReceiver`.
+  Only the shell can send it.
+
 ## Tie yourself to the mast
 
 ![Ulysses and the Sirens](<public/John_William_Waterhouse_-_Ulysses_and_the_Sirens_(1891).jpg>)
