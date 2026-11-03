@@ -43,12 +43,45 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />
         </intent>
+        <!-- Strict mode: the system apps whose pages could switch the
+             blocker off or uninstall AppBlock (Strict.guardedPackages) -->
+        <intent>
+            <action android:name="android.settings.SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.ACCESSIBILITY_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
+            <data android:scheme="package" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.MANAGE_APPLICATIONS_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.app.action.ADD_DEVICE_ADMIN" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DELETE" />
+            <data android:scheme="package" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.UNINSTALL_PACKAGE" />
+            <data android:scheme="package" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MANAGE_APP_PERMISSIONS" />
+        </intent>
+        <intent>
+            <action android:name="android.safetycenter.action.SAFETY_CENTER" />
+        </intent>
     </queries>
 
     <!-- allowBackup: Android's Auto Backup copies the app's data (the rules,
          the usage log, onboarding seen) to the user's Google account and
          restores it on a new phone or a reinstall. It's the default, spelled
-         out so it stays on. -->
+         out so it stays on. Strict mode's file is left out (backup_rules,
+         data_extraction_rules): on a new phone AppBlock isn't a device admin. -->
     <!-- usesCleartextTraffic: HTTPS only, never plain HTTP. The rules fetch
          is the one connection, and it's to an https:// URL; this makes the
          system refuse plain HTTP anyway (also the default since Android 9,
@@ -56,6 +89,8 @@
     <application
         android:usesCleartextTraffic="false"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="AppBlock"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -91,6 +126,62 @@
             android:name=".DontGiveUpActivity"
             android:exported="false"
             android:label="Don't give up!" />
+
+        <!-- Strict mode: choosing the way out, then the screens to turn it off. -->
+        <activity
+            android:name=".StrictActivity"
+            android:exported="false"
+            android:label="Strict mode" />
+
+        <activity
+            android:name=".StrictSetupActivity"
+            android:exported="false"
+            android:label="Strict mode" />
+
+        <!-- Target of the "Contact support" launcher shortcut -->
+        <activity
+            android:name=".SupportActivity"
+            android:exported="false"
+            android:label="Contact support" />
+
+        <!-- Strict mode's device admin. It asks for no admin powers
+             (strict_admin.xml): being one is what makes Android refuse to
+             uninstall AppBlock. Only the system may send it the admin
+             broadcasts (the permission). -->
+        <receiver
+            android:name=".StrictAdmin"
+            android:exported="true"
+            android:label="AppBlock"
+            android:description="@string/strict_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/strict_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The clock being set (a counting cooldown starts over), and the
+             buttons on strict mode's notifications (sent to it by name). -->
+        <receiver
+            android:name=".StrictReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
+
+        <!-- adb's way out of strict mode. DUMP: only the shell holds it, no
+             app can, so nothing on the phone can send this. -->
+        <receiver
+            android:name=".EndStrictReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="xyz.robinroy.appblock.END_STRICT" />
+            </intent-filter>
+        </receiver>
 
         <!-- The blocker: an accessibility service that sees which apps are on
              screen and draws the block wall over a spent one. Only the

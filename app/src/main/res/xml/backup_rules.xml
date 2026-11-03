@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup on Android 11 and older: everything (the rules, the usage
+     log) except strict mode's file. On a new phone or a reinstall AppBlock
+     isn't a device admin, so a restored strict mode would be a lie; it
+     starts off. Android 12+ reads data_extraction_rules.xml instead. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="strict.xml" />
+</full-backup-content>

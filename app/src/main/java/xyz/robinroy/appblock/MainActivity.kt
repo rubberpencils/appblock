@@ -9,20 +9,13 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
-import android.os.VibrationAttributes
-import android.os.VibrationEffect
-import android.os.Vibrator
 import android.provider.Settings
-import android.text.Editable
 import android.text.Html
-import android.text.InputType
-import android.text.TextWatcher
 import android.text.method.LinkMovementMethod
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -90,6 +83,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // A cooldown that ran out, or strict mode ended in safe mode, shows now.
+        Strict.check(this)
         render()
         refreshPermRows?.invoke()
     }
@@ -156,7 +151,50 @@ class MainActivity : Activity() {
             typeface = Ui.serif(context, italic = true)
             setPadding(Ui.dp(context, 10), 0, 0, 0)
         }, Ui.lp(0).apply { weight = 1f })
+        addView(strictPill(), Ui.lp(Ui.WRAP).apply { marginEnd = Ui.dp(context, 8) })
         addView(aboutButton())
+    }
+
+    /**
+     * "Strict mode" and a lock: light and open while it's off, ink with a
+     * green, shut lock while it's on. Opens strict mode's screen either way.
+     */
+    private fun strictPill(): View {
+        val on = Storage.loadStrict(this).on
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            contentDescription = if (on) "Strict mode is on" else "Strict mode is off"
+            isClickable = true
+            isFocusable = true
+            background = Ui.shape(context, if (on) R.color.ink else R.color.surface, 99f,
+                if (on) null else R.color.line)
+            setPadding(Ui.dp(context, 14), Ui.dp(context, 5), Ui.dp(context, 5), Ui.dp(context, 5))
+            addView(Ui.txt(context, "Strict mode", 14f, if (on) R.color.on_ink else R.color.ink, medium = true).apply {
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            })
+            addView(FrameLayout(context).apply {
+                background = Ui.shape(context, if (on) R.color.accent else R.color.surface_alt, 0f, oval = true)
+                addView(Ui.icon(context, if (on) R.drawable.ic_lock else R.drawable.ic_lock_open, 15,
+                    if (on) R.color.on_ink else R.color.muted).apply {
+                    layoutParams = FrameLayout.LayoutParams(Ui.dp(context, 15), Ui.dp(context, 15), Gravity.CENTER)
+                })
+            }, LinearLayout.LayoutParams(Ui.dp(context, 30), Ui.dp(context, 30)).apply {
+                marginStart = Ui.dp(context, 8)
+            })
+            setOnClickListener { onStrict() }
+            Ui.press(this, 0.95f)
+        }
+    }
+
+    private fun onStrict() {
+        // Strict mode guards the blocker, so it needs the blocker working first.
+        val missing = missingRequirements(this)
+        if (missing.isNotEmpty() && !Storage.loadStrict(this).on) {
+            Sheet.info(this, "Finish setting up first", Storage.requirementsMessage(missing))
+            return
+        }
+        startActivity(Intent(this, StrictActivity::class.java))
     }
 
     /**
@@ -381,21 +419,25 @@ class MainActivity : Activity() {
     /** "Block YouTube Shorts" and its switch, under the app's row; the whole line is the touch target. */
     private fun feedSwitch(pkg: String, feed: Storage.Feed): View {
         val on = pkg in Storage.loadFeedBlocks(this)
+        // Strict mode: blocking a feed is stricter, unblocking it isn't.
+        val locked = on && Storage.loadStrict(this).on
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-            isFocusable = true
+            isClickable = !locked
+            isFocusable = !locked
+            if (locked) alpha = 0.5f
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(Ui.txt(context, feed.label, 14f, medium = true))
-                addView(Ui.muted(context, "Always, even with time left", 12f))
+                addView(Ui.muted(context, if (locked) "Locked by strict mode" else "Always, even with time left", 12f))
             }, Ui.lp(0).apply { weight = 1f })
             addView(Switch(context).apply {
                 isChecked = on
                 isClickable = false   // the line takes the tap
+                isEnabled = !locked
             })
-            setOnClickListener {
+            if (!locked) setOnClickListener {
                 if (on) { Storage.setFeedBlocked(this@MainActivity, pkg, false); render() }
                 else feedDisclosure(pkg, feed)
             }
@@ -612,7 +654,9 @@ class MainActivity : Activity() {
                 "It only looks at which app each window belongs to (and, if you " +
                 "block YouTube Shorts or Instagram Reels, for their player). It " +
                 "never reads what's on screen or what you type, and nothing about " +
-                "you leaves your phone.\n\n" +
+                "you leaves your phone. (In strict mode, if you turn it on, it also " +
+                "looks for its own name on Settings' screens, to cover the ones that " +
+                "would switch it off.)\n\n" +
                 "On the next screen, find AppBlock (under Installed apps or Downloaded " +
                 "apps) and turn it on. Android will warn that it can see and control " +
                 "the screen: that's what every accessibility service is allowed, not " +
@@ -655,71 +699,10 @@ class MainActivity : Activity() {
         val summary = Ui.display(this, "", 26f)
         val note = Ui.muted(this, "", 14f)
 
-        /** One side of the sentence: stepper, typed number, unit. */
-        class Side(val label: String, val units: List<Storage.SpanUnit>, startMin: Int) {
-            var unit = Storage.unitFor(startMin, units)
-            val field = numberField().apply { setText((startMin / unit.minutes).toString()) }
-            val segments = mutableMapOf<Storage.SpanUnit, TextView>()
-            var changed: () -> Unit = {}
-            val amount get() = field.text.toString()
-
-            fun paintUnits() {
-                for ((u, v) in segments) {
-                    val on = u == unit
-                    v.setTextColor(getColor(if (on) R.color.on_ink else R.color.muted))
-                    v.background = if (on) Ui.shape(this@MainActivity, R.color.ink, 11f) else null
-                }
-            }
-
-            fun setMinutes(min: Int) {
-                unit = Storage.unitFor(min, units)
-                paintUnits()
-                field.setText((min / unit.minutes).toString())
-            }
-
-            fun step(up: Boolean) {
-                val next = Storage.stepAmount(Storage.parseAmount(amount) ?: 1, unit, up)
-                tick()
-                field.setText(next.toString())
-                field.setSelection(field.text.length)
-            }
-
-            val view: View = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(Ui.eyebrow(context, label))
-                addView(LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    addView(Ui.iconButton(context, R.drawable.ic_minus, "$label: less", 40) { step(false) })
-                    addView(field, Ui.lp(Ui.dp(context, 64)).apply {
-                        marginStart = Ui.dp(context, 6); marginEnd = Ui.dp(context, 6)
-                    })
-                    addView(Ui.iconButton(context, R.drawable.ic_plus, "$label: more", 40) { step(true) })
-                    addView(View(context), Ui.lp(0).apply { weight = 1f })
-                    addView(LinearLayout(context).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        background = Ui.shape(context, R.color.surface_alt, 14f)
-                        val p = Ui.dp(context, 3)
-                        setPadding(p, p, p, p)
-                        for (u in units) {
-                            val seg = Ui.txt(context, u.label, 14f, R.color.muted, medium = true).apply {
-                                gravity = Gravity.CENTER
-                                setPadding(Ui.dp(context, 11), Ui.dp(context, 8), Ui.dp(context, 11), Ui.dp(context, 8))
-                                isClickable = true
-                                setOnClickListener { unit = u; paintUnits(); changed() }
-                            }
-                            segments[u] = seg
-                            addView(seg)
-                        }
-                    })
-                }, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
-            }
-
-            init { paintUnits() }
-        }
-
-        val allow = Side("Allow", listOf(Storage.SpanUnit.MIN, Storage.SpanUnit.HR), rule.allowMin)
-        val window = Side("In any", Storage.SpanUnit.entries, rule.windowMin)
+        val allow = SpanPicker(this, "Allow", listOf(Storage.SpanUnit.MIN, Storage.SpanUnit.HR), rule.allowMin)
+        val window = SpanPicker(this, "In any", Storage.SpanUnit.entries, rule.windowMin)
+        // Strict mode: the limit can get stricter, never looser (Storage.loosens).
+        val strict = Storage.loadStrict(this).on
 
         fun picked(): Rule? =
             Storage.limitRule(allow.amount, allow.unit, window.amount, window.unit)
@@ -732,7 +715,7 @@ class MainActivity : Activity() {
                 isClickable = true
                 Ui.press(this, 0.95f)
                 setOnClickListener {
-                    tick()
+                    SpanPicker.tick(context)
                     allow.setMinutes(preset.allowMin)
                     window.setMinutes(preset.windowMin)
                 }
@@ -741,6 +724,7 @@ class MainActivity : Activity() {
 
         val ok = sheet.primary("OK") {
             val r = picked() ?: return@primary
+            if (strict && Storage.loosens(rule, r)) return@primary
             val rules = Storage.loadRules(this).toMutableMap()
             rules[pkg] = r
             Storage.saveRules(this, rules)
@@ -750,7 +734,12 @@ class MainActivity : Activity() {
 
         fun describe() {
             val r = picked()
-            if (r != null) {
+            val looser = strict && r != null && Storage.loosens(rule, r)
+            if (looser) {
+                summary.alpha = 0.3f
+                note.setTextColor(getColor(R.color.danger))
+                note.text = "Strict mode is on: this limit can get stricter, not looser."
+            } else if (r != null) {
                 summary.text = "${Storage.fmtSpan(r.allowMin)} in any ${Storage.fmtSpan(r.windowMin)}"
                 summary.alpha = 1f
                 note.setTextColor(getColor(R.color.muted))
@@ -763,7 +752,7 @@ class MainActivity : Activity() {
                 note.setTextColor(getColor(if (err != null) R.color.danger else R.color.muted))
                 note.text = err ?: "Enter how much time, and over how long."
             }
-            ok.isEnabled = r != null
+            ok.isEnabled = r != null && !looser
             for ((preset, chip) in chips) {
                 val on = r == preset
                 chip.setTextColor(getColor(if (on) R.color.on_ink else R.color.ink))
@@ -773,13 +762,6 @@ class MainActivity : Activity() {
         }
         allow.changed = ::describe
         window.changed = ::describe
-        val watcher = object : TextWatcher {
-            override fun afterTextChanged(s: Editable) = describe()
-            override fun beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
-        }
-        allow.field.addTextChangedListener(watcher)
-        window.field.addTextChangedListener(watcher)
 
         sheet.add(summary, 20)
         sheet.add(note, 6)
@@ -798,10 +780,11 @@ class MainActivity : Activity() {
         }, 10)
         sheet.actions(
             sheet.secondary("Cancel"), ok,
+            // Removing an app gives all its time back: not in strict mode.
             leading = Ui.ghostButton(this, "Remove", danger = true) {
                 sheet.dismiss()
                 removeApp(pkg)
-            })
+            }.apply { isEnabled = !strict })
         sheet.setOnShowListener { describe() }
         sheet.show()
     }
@@ -826,38 +809,6 @@ class MainActivity : Activity() {
         }.timeInMillis
         return usm.queryAndAggregateUsageStats(midnight, System.currentTimeMillis())
             .mapValues { it.value.totalTimeInForeground }
-    }
-
-    /** Typed-number box for the limit sheet: soft plate, big digits, one tap selects all. */
-    private fun numberField() = EditText(this).apply {
-        inputType = InputType.TYPE_CLASS_NUMBER
-        imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
-        gravity = Gravity.CENTER
-        textSize = 20f
-        typeface = Ui.sans(context, medium = true)
-        setTextColor(getColor(R.color.ink))
-        setSelectAllOnFocus(true)
-        maxLines = 1
-        filters = arrayOf(android.text.InputFilter.LengthFilter(5))
-        background = Ui.shape(context, R.color.surface_alt, 14f)
-        val h = Ui.dp(context, 6)
-        val v = Ui.dp(context, 9)
-        setPadding(h, v, h, v)
-    }
-    /**
-     * One short click of the vibration motor per stepper tap: a plain 12 ms
-     * pulse, tagged as a media vibration. Anything Android or OxygenOS files
-     * as touch feedback (performHapticFeedback, the predefined TICK, even an
-     * untagged short pulse) is silent while the phone's "touch feedback"
-     * setting is off, and the tick is the point.
-     */
-    private fun tick() {
-        val vibrator = getSystemService(Vibrator::class.java) ?: return
-        val pulse = VibrationEffect.createOneShot(12,
-            if (vibrator.hasAmplitudeControl()) 180 else VibrationEffect.DEFAULT_AMPLITUDE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-            vibrator.vibrate(pulse, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_MEDIA))
-        else vibrator.vibrate(pulse)
     }
 
     private fun labelFor(pkg: String) = try {

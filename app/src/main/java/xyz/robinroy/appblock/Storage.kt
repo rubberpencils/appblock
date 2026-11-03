@@ -446,7 +446,8 @@ object Storage {
                 "wall over one whose time is up. It only looks at which app " +
                 "each window belongs to, never at what's inside it (except " +
                 "for YouTube's Shorts player or Instagram's Reels player, if " +
-                "you block them).",
+                "you block them, and in strict mode its own name on Settings' " +
+                "screens).",
             "Required. Sees which apps are on screen and draws the wall."),
         BATTERY(
             "Unrestricted battery",
@@ -480,6 +481,21 @@ object Storage {
             if (h == 0) null else if (h == 1) "1 hr" else "$h hrs",
             if (m == 0) null else "$m min")
         return if (parts.isEmpty()) "0 min" else parts.joinToString(" ")
+    }
+
+    /** A countdown's face: "4:05", "1:02:03", "3d 4:05:06"; seconds round up, so it never shows 0:00 early. */
+    fun fmtClock(ms: Long): String {
+        val total = (maxOf(0L, ms) + 999) / 1000
+        val d = total / 86_400
+        val h = total / 3600 % 24
+        val m = total / 60 % 60
+        val s = total % 60
+        val ms2 = "%02d:%02d".format(m, s)
+        return when {
+            d > 0 -> "${d}d $h:$ms2"
+            h > 0 -> "$h:$ms2"
+            else -> "$m:%02d".format(s)
+        }
     }
 
     /** Today's screen time under an app's name on the home list. */

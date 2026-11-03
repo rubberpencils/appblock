@@ -5,7 +5,10 @@
      and position. Only in an app whose feed the user blocked (YouTube's
      Shorts, Instagram's Reels) does it look inside, for the feed's player
      by its view id (hence the view ids), and only then does it switch on
-     content changes too, in code (BlockerService.watchFeeds). -->
+     content changes too, in code (BlockerService.watchContent). In strict
+     mode it also reads the texts of the system apps that could switch it off
+     (Settings, the package installer, the permission controller) for
+     AppBlock's own name, and walls a screen showing it. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
     android:accessibilityFeedbackType="feedbackGeneric"

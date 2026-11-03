@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Long-press launcher shortcuts. Placeholder for now: "Don't give up!"
-     catches the moment someone long-presses AppBlock to uninstall it. -->
+<!-- Long-press launcher shortcuts. "Don't give up!" catches the moment
+     someone long-presses AppBlock to uninstall it; "Contact support" is a
+     placeholder page for now. -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
         android:shortcutId="dont_give_up"
@@ -11,5 +12,15 @@
             android:action="android.intent.action.VIEW"
             android:targetPackage="xyz.robinroy.appblock"
             android:targetClass="xyz.robinroy.appblock.DontGiveUpActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="contact_support"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut"
+        android:shortcutShortLabel="@string/shortcut_contact_support">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="xyz.robinroy.appblock"
+            android:targetClass="xyz.robinroy.appblock.SupportActivity" />
     </shortcut>
 </shortcuts>

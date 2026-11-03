@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strict mode's cooldown way out -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M4.5,13.5a7.5,7.5 0 1,0 15,0a7.5,7.5 0 1,0 -15,0" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" />
+    <path android:pathData="M12,13.5 V9.5" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" />
+    <path android:pathData="M9.5,3 H14.5" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.6" android:strokeLineCap="round" />
+</vector>

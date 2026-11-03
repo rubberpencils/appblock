@@ -379,4 +379,17 @@ class StrictTest {
         assertEquals(Storage.Strict(), Storage.strictFromJson("not json"))
         assertFalse(Storage.strictFromJson("{}").on)
     }
+
+    // ---- the countdown's face ----
+
+    @Test
+    fun `countdowns read like a clock`() {
+        assertEquals("15:00", Storage.fmtClock(15.min))
+        assertEquals("4:05", Storage.fmtClock(4.min + 5_000))
+        assertEquals("0:01", Storage.fmtClock(1))           // never 0:00 while time is left
+        assertEquals("0:00", Storage.fmtClock(0))
+        assertEquals("0:00", Storage.fmtClock(-5_000))
+        assertEquals("1:02:03", Storage.fmtClock(62.min + 3_000))
+        assertEquals("3d 4:05:06", Storage.fmtClock(3L * day.min + 245.min + 6_000))
+    }
 }

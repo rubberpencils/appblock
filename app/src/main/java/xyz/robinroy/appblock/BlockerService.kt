@@ -75,8 +75,16 @@ class BlockerService : AccessibilityService() {
     private var pipRoots = mapOf<String, AccessibilityNodeInfo>()
     // Apps whose picture-in-picture window the system was asked to close, while it's up.
     private var pipsAsked = emptySet<String>()
-    // Apps on screen whose feed is blocked: their content changes are watched.
-    private var watchedFeeds = emptySet<String>()
+    // The system apps strict mode guards (Settings, the package installer,
+    // the permission controller), found when the service starts.
+    private var guarded = emptySet<String>()
+    // While strict mode is on: the guarded apps, whose windows are read for
+    // AppBlock's name the moment they change.
+    private var strictWatch = emptySet<String>()
+    // Guarded apps walled by strict mode, while they're on screen (Storage.strictWalls).
+    private var strictWalled = emptySet<String>()
+    // Apps whose content changes are asked for: watched feeds and, in strict mode, the guarded apps on screen.
+    private var contentWatched = emptySet<String>()
     private val versions = mutableMapOf<String, Long>()  // feed app on screen -> its versionCode
     private val feedsShown = mutableSetOf<String>()      // feed apps showing their feed (for the log)
     private var refreshQueued = false
@@ -88,7 +96,11 @@ class BlockerService : AccessibilityService() {
     private data class Timer(val deadline: Long, val level: Int)
 
     private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) = refresh()
+        override fun onReceive(context: Context, intent: Intent) {
+            // Back from safe mode, or the phone woken: is strict mode still as it was?
+            Strict.check(context)
+            refresh()
+        }
     }
 
     override fun onServiceConnected() {
@@ -99,6 +111,9 @@ class BlockerService : AccessibilityService() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.cancelAll()
         for (old in listOf("service", "usage", "usage_hi")) nm.deleteNotificationChannel(old)
+        // Strict mode's countdowns were cleared with the rest: back up they go.
+        Strict.renotify(this)
+        guarded = Strict.guardedPackages(this)
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -109,14 +124,25 @@ class BlockerService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        val pkg = event.packageName?.toString()
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             // In a watched feed's app (Shorts opening, or scrolled away from).
             // A playing video changes the screen many times a second: look
-            // again at most every 300 ms.
-            if (event.packageName?.toString() in watchedFeeds && !refreshQueued) {
+            // again at most every 300 ms. A guarded app (AppBlock's name
+            // scrolled into view) is looked at sooner.
+            if (pkg in contentWatched && !refreshQueued) {
                 refreshQueued = true
-                handler.postDelayed(refreshNow, 300)
+                handler.postDelayed(refreshNow, if (pkg in strictWatch) 100 else 300)
             }
+            return
+        }
+        // In strict mode, a guarded app's new screen is read at once: a
+        // switch there is two quick taps from turning the blocker off. The
+        // burst's later events still get their look.
+        if (pkg in strictWatch) {
+            refresh()
+            refreshQueued = true
+            handler.postDelayed(refreshNow, 50)
             return
         }
         // A burst of window events (an app opening fires several) is one refresh.
@@ -177,11 +203,16 @@ class BlockerService : AccessibilityService() {
 
     /** Walls over the spent apps on screen (and blocked feeds), sessions and countdowns for the other limited ones. */
     private fun enforce(windows: List<Storage.ScreenWindow>, screen: Point) {
-        val rules = Storage.loadRules(this)
-        val plan = Storage.plan(onScreen.keys, rules, ::spent)
         val now = System.currentTimeMillis()
+        val strict = Storage.loadStrict(this)
+        // An emergency pass opens every blocked app: no walls, no sessions,
+        // no countdowns, its time counted on the pass instead.
+        val pass = Storage.passRunning(strict, now)
+        val allRules = Storage.loadRules(this)
+        val rules = if (pass) emptyMap() else allRules
+        val plan = Storage.plan(onScreen.keys, rules, ::spent)
 
-        for (pkg in sessions.keys - plan.timed) endSession(pkg, rules[pkg])
+        for (pkg in sessions.keys - plan.timed) endSession(pkg, allRules[pkg])
         for (pkg in plan.timed) sessions.getOrPut(pkg) { now }
 
         // The shade or power menu is open: the walls would be over it.
@@ -189,10 +220,19 @@ class BlockerService : AccessibilityService() {
         // Home already showing beside the app (it's in a pop-up over it): a
         // "Go to home screen" button would do nothing.
         val homeButton = homePackage() !in onScreen
-        val feedApps = Storage.loadFeedBlocks(this)
+        val feedApps = if (pass) emptySet() else Storage.loadFeedBlocks(this)
             .filter { it in onScreen && it !in plan.walled && Feeds.feed(it) != null }.toSet()
         watchFeeds(feedApps)
-        val kinds = Storage.wallKinds(plan.walled, feedApps.filter(::feedShowing).toSet())
+        // Strict mode: the guarded apps on screen showing AppBlock's name
+        // (its App info, its Accessibility switch, the uninstall dialog...).
+        strictWatch = if (strict.on) guarded else emptySet()
+        val guardedOnScreen = strictWatch.filter { it in onScreen }.toSet()
+        val naming = guardedOnScreen.filter(::namesAppBlock).toSet()
+        val walledBefore = strictWalled
+        strictWalled = if (strict.on) Storage.strictWalls(strictWalled, onScreen.keys, naming) else emptySet()
+        if (strictWalled != walledBefore) Log.i(TAG, "strict mode walls: $strictWalled")
+        watchContent(feedApps + guardedOnScreen)
+        val kinds = Storage.wallKinds(plan.walled, feedApps.filter(::feedShowing).toSet(), strictWalled)
         for (pkg in walls.keys.toList()) if (stepAside || pkg !in kinds) hideWall(pkg)
         val pip = Storage.pipApps(windows)
         if (!stepAside) for ((pkg, kind) in kinds) {
@@ -213,6 +253,43 @@ class BlockerService : AccessibilityService() {
         handler.removeCallbacks(tick)
         // Walled apps are re-checked too: the wall lifts once time comes back.
         if (plan.timed.isNotEmpty() || plan.walled.isNotEmpty()) handler.postDelayed(tick, tickMs)
+        // Strict mode's own deadlines: a cooldown running out, a pass used up.
+        handler.removeCallbacks(strictTick)
+        listOf(Storage.cooldownLeftMs(strict, now), Storage.passLeftMs(strict, now))
+            .filter { it > 0 }.minOrNull()?.let { handler.postDelayed(strictTick, it + 250) }
+    }
+
+    /** At a cooldown's or a pass's end: Strict.check ends it, then the walls follow. */
+    private val strictTick = Runnable {
+        Strict.check(this)
+        refresh()
+    }
+
+    /** Strict mode changed (on, off, a pass started or stopped): look again now. */
+    fun strictChanged() {
+        handler.post { refresh() }
+    }
+
+    /**
+     * Whether any of `pkg`'s windows names AppBlock (Storage.namesApp): its
+     * texts and content descriptions, read off the window's contents. Only
+     * the guarded system apps are read, only while strict mode is on, and
+     * only for this one word; nothing is kept.
+     */
+    private fun namesAppBlock(pkg: String): Boolean {
+        val label = applicationInfo.loadLabel(packageManager).toString()
+        return appRoots[pkg].orEmpty().any { root ->
+            val texts = mutableListOf<String>()
+            val stack = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
+            var seen = 0
+            while (stack.isNotEmpty() && seen++ < 3000) {
+                val node = stack.removeLast()
+                node.text?.let { texts += it.toString() }
+                node.contentDescription?.let { texts += it.toString() }
+                for (i in 0 until node.childCount) try { node.getChild(i)?.let(stack::add) } catch (e: Exception) {}
+            }
+            Storage.namesApp(texts, label)
+        }
     }
 
     /** Every few seconds while a limited app is on screen: log the time so far, then re-check. */
@@ -234,16 +311,21 @@ class BlockerService : AccessibilityService() {
 
     // ------------------------------------------------------------------ feeds
 
-    /**
-     * Watch the content of the apps on screen whose feed is blocked: a feed
-     * opens inside the app (a tab, a link) without any window changing.
-     * Content changes are the busiest events there are, so they're only
-     * asked for while such an app is on screen.
-     */
+    /** Forget what was noted about feed apps no longer on screen. */
     private fun watchFeeds(apps: Set<String>) {
         for (pkg in versions.keys - apps) { versions.remove(pkg); feedsShown.remove(pkg) }
-        val was = watchedFeeds.isNotEmpty()
-        watchedFeeds = apps
+    }
+
+    /**
+     * Watch the content of `apps` while one is on screen: a feed opens
+     * inside its app (a tab, a link) without any window changing, and in
+     * strict mode a guarded app's list scrolls AppBlock into view. Content
+     * changes are the busiest events there are, so they're only asked for
+     * while such an app is on screen.
+     */
+    private fun watchContent(apps: Set<String>) {
+        val was = contentWatched.isNotEmpty()
+        contentWatched = apps
         if (apps.isNotEmpty() == was) return
         val info = serviceInfo ?: return
         val content = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
@@ -479,16 +561,21 @@ class BlockerService : AccessibilityService() {
             // One TextView carries both lines (the e2e tests read it whole);
             // spans give the headline weight and the wait time a calmer tone.
             // A pop-up a few fingers wide fits one short word: it's plain which app it's over.
+            val strict = look.kind == Storage.WallKind.STRICT
             val headline = if (feed != null) Storage.feedHeadline(feed, tiny)
+                else if (strict) (if (tiny) "Strict mode." else "Strict mode is on.")
                 else if (tiny) "Blocked." else "$label is blocked."
             val wait = if (feed != null) "The rest of $label is still open."
+                else if (strict) null
                 else "Try again in ${Storage.fmtSpan(Storage.ceilMin(Storage.msUntilUnblocked(this@BlockerService, pkg, rule!!)).toInt())}."
-            val message = SpannableString("$headline\n\n$wait").apply {
-                setSpan(AbsoluteSizeSpan(if (full) 40 else if (tiny) 22 else 28, true), 0, headline.length + 1, 0)
+            val message = SpannableString(if (wait == null) headline else "$headline\n\n$wait").apply {
+                setSpan(AbsoluteSizeSpan(if (full) 40 else if (tiny) 22 else 28, true), 0, minOf(length, headline.length + 1), 0)
                 setSpan(Ui.FontSpan(Ui.serif(this@BlockerService)), 0, headline.length, 0)
-                setSpan(AbsoluteSizeSpan(10, true), headline.length + 1, headline.length + 2, 0)  // the blank line: a small gap
-                setSpan(AbsoluteSizeSpan(if (full) 18 else if (tiny) 13 else 15, true), headline.length + 2, length, 0)
-                setSpan(ForegroundColorSpan(getColor(R.color.muted)), headline.length + 2, length, 0)
+                if (wait != null) {
+                    setSpan(AbsoluteSizeSpan(10, true), headline.length + 1, headline.length + 2, 0)  // the blank line: a small gap
+                    setSpan(AbsoluteSizeSpan(if (full) 18 else if (tiny) 13 else 15, true), headline.length + 2, length, 0)
+                    setSpan(ForegroundColorSpan(getColor(R.color.muted)), headline.length + 2, length, 0)
+                }
             }
 
             if (full) addView(FrameLayout(context).apply {
@@ -521,20 +608,22 @@ class BlockerService : AccessibilityService() {
                 setLineSpacing(0f, 1.05f)
                 letterSpacing = -0.01f
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP))
-            if (full && feed == null) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
+            if (full && look.kind == Storage.WallKind.SPENT) addView(Ui.muted(context, "The minutes come back as older use leaves the window.", 14f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, 16) })
             // The wall covers a pop-up's own close button and handle (they're
             // drawn inside its window), so say how else to close it. A feed
             // wall has the back button below instead. A picture-in-picture
             // window takes touches through the wall, so it's closed as usual.
-            if (look.popUp && feed == null) addView(Ui.muted(context,
+            if (look.popUp && feed == null && !strict) addView(Ui.muted(context,
                 if (look.passesTouches) "Drag it to the ✕ to close it." else "To close it, swipe it away in Recents.",
                 if (full) 14f else if (tiny) 11f else 13f).apply {
                 gravity = Gravity.CENTER
             }, LinearLayout.LayoutParams(Ui.MATCH, Ui.WRAP).apply { topMargin = Ui.dp(context, if (tiny) 8 else 16) })
-            // Out of Shorts or Reels, into the rest of the app: back, as if the user swiped it.
-            if (feed != null) addView(Ui.primaryButton(context, "Go back") {
+            // Out of Shorts or Reels, into the rest of the app, or out of a
+            // system dialog in strict mode (the uninstall prompt): back, as
+            // if the user swiped it.
+            if (feed != null || (strict && look.popUp)) addView(Ui.primaryButton(context, "Go back") {
                 performGlobalAction(GLOBAL_ACTION_BACK)
             }, LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply {
                 topMargin = Ui.dp(context, if (full) 36 else 16)
@@ -566,7 +655,9 @@ class BlockerService : AccessibilityService() {
         appRoots = emptyMap()
         pipRoots = emptyMap()
         pipsAsked = emptySet()
-        watchedFeeds = emptySet()
+        contentWatched = emptySet()
+        strictWatch = emptySet()
+        strictWalled = emptySet()
         try { unregisterReceiver(screenReceiver) } catch (e: Exception) {}
         Log.i(TAG, "disconnected")
     }

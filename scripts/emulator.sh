@@ -41,7 +41,7 @@ fi
 ./gradlew assembleDebug
 APK=app/build/outputs/apk/debug/app-debug.apk
 # A release build there (signed differently) refuses the update: replace it.
-"$ADB" install -r "$APK" || { "$ADB" uninstall xyz.robinroy.appblock; "$ADB" install "$APK"; }
+"$ADB" install -r "$APK" || { end_strict; "$ADB" uninstall xyz.robinroy.appblock; "$ADB" install "$APK"; }
 
 # The settings, granted directly instead of through their pages: the
 # blocker's accessibility service, the battery exemption, and the optional

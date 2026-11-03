@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto Backup on Android 12+, to the Google account and phone to phone:
+     everything except strict mode's file (see backup_rules.xml). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="strict.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="strict.xml" />
+    </device-transfer>
+</data-extraction-rules>

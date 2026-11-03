@@ -2,6 +2,9 @@
 <resources>
     <!-- Static shortcut labels must be string resources -->
     <string name="shortcut_dont_give_up">Don\'t give up!</string>
+    <string name="shortcut_contact_support">Contact support</string>
+    <!-- Shown on the system's "Activate device admin app?" page for strict mode -->
+    <string name="strict_admin_description">Strict mode. While it\'s on, Android won\'t let AppBlock be uninstalled. It asks for no other admin powers, and lets go when strict mode ends.</string>
     <!-- Shown under AppBlock on the system's Accessibility settings page -->
-    <string name="blocker_service_description">AppBlock uses this to see which apps are on screen (split screen and pop-up windows included) and to put its block wall over an app whose time is up. It only looks at which app each window belongs to, never at what\'s inside it, except to spot YouTube\'s Shorts player or Instagram\'s Reels player if you block them. Nothing about you leaves your phone.</string>
+    <string name="blocker_service_description">AppBlock uses this to see which apps are on screen (split screen and pop-up windows included) and to put its block wall over an app whose time is up. It only looks at which app each window belongs to, never at what\'s inside it, except to spot YouTube\'s Shorts player or Instagram\'s Reels player if you block them, and in strict mode to find its own name on Settings\' screens and cover the ones that would switch it off. Nothing about you leaves your phone.</string>
 </resources>
