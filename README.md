@@ -37,6 +37,9 @@ on from the checklist in AppBlock.
 
 ## Strict mode
 
+| ![Strict mode's cooldown page](public/strict.jpg) | ![AppBlock's App info, walled in strict mode](public/strict-wall.jpg) |
+| ------------------------------------------------- | --------------------------------------------------------------------- |
+
 For when you don't trust yourself not to switch AppBlock off. Tap **Strict mode**
 on the home screen and pick your way out:
 
@@ -57,7 +60,9 @@ While it's on:
 - Limits only get stricter: lowering an allowance or adding an app works; raising
   one, removing an app or unblocking Shorts waits until strict mode is off.
 - Optional **emergency passes** ("5 min in any day", say) open your blocked apps
-  for a bit without ending strict mode. Stop one early to save the rest.
+  without ending strict mode. A pass only counts down while you're in an app it
+  opened (a spent app, or Shorts or Reels), so time spent anywhere else isn't
+  wasted. Stop it to save what's left.
 
 Setting the phone's clock to skip a cooldown starts it over. Strict mode isn't
 restored from a backup: on a new phone it starts off.
