@@ -154,6 +154,21 @@ class StrictE2eTest {
     }
 
     @Test
+    fun endingTwiceInARow_doesNotCrash() {
+        // A double tap on Turn off, or the adb command beside the admin's
+        // own "switched off" callback: the second ending comes while
+        // Android is still removing the admin from the first.
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN)
+
+        Strict.end(ctx, Strict.Ending.ADB)
+        Strict.end(ctx, Strict.Ending.ADB)
+
+        assertFalse(Storage.loadStrict(ctx).on)
+        assertTrue("the admin wasn't let go", eventually { !Strict.adminActive(ctx) })
+    }
+
+    @Test
     fun androidRefusesToUninstallAppBlock() {
         freshState()
         strictOn(Storage.WayOut.COOLDOWN)

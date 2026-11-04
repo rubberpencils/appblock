@@ -110,13 +110,25 @@ object Strict {
         if (s.on) return
         if (!s.pending) { Log.i(TAG, "admin enabled outside strict mode: letting go"); releaseAdmin(ctx); return }
         Storage.saveStrict(ctx, s.copy(on = true, pending = false, cooldownEnds = 0, passStarted = 0,
-            passUses = emptyList(), clock = anchor(ctx)))
+            passInUse = 0, passUses = emptyList(), clock = anchor(ctx)))
         Log.i(TAG, "on: ${s.wayOut}, cooldown ${s.cooldownMin} min, pass ${s.pass}")
         changed(ctx)
     }
 
+    /**
+     * Let go of the device admin. Android removes it in the background, so a
+     * second ending close behind the first (a double tap, the adb command
+     * beside the admin's own "switched off" callback) can find it still
+     * active, then have it gone by the time it asks: Android throws, and
+     * the admin is let go all the same.
+     */
     private fun releaseAdmin(ctx: Context) {
-        if (adminActive(ctx)) dpm(ctx).removeActiveAdmin(admin(ctx))
+        if (!adminActive(ctx)) return
+        try {
+            dpm(ctx).removeActiveAdmin(admin(ctx))
+        } catch (e: SecurityException) {
+            Log.i(TAG, "admin already gone: ${e.message}")
+        }
     }
 
     /**
