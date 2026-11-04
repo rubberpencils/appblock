@@ -29,13 +29,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
       # Caches Gradle and its downloads between runs (like caching node_modules).
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       # Runs the unit tests and makes sure the APK still compiles.
       - run: ./gradlew test assembleDebug
 
@@ -56,12 +56,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       # Hardware acceleration: GitHub's Linux runners support KVM, but the
       # runner user needs access to the device.
       - name: Enable KVM
@@ -92,7 +92,7 @@ jobs:
       # screen at the moment each failing test failed and the device log.
       - name: Upload the e2e report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report-api-${{ matrix.api }}
           path: |
