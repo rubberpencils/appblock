@@ -210,10 +210,11 @@ class StrictTest {
     }
 
     @Test
-    fun `moving the clock keeps a running pass's time`() {
-        val running = Storage.startPass(on, now)
-        val after = Storage.afterClockCheck(running, now + 2.min + 60.min, 52.min, 7)
+    fun `moving the clock keeps a counting pass's time`() {
+        val counting = Storage.meterPass(Storage.startPass(on, now), true, now)
+        val after = Storage.afterClockCheck(counting, now + 2.min + 60.min, 52.min, 7)
         assertEquals(3.min, Storage.passLeftMs(after, now + 2.min + 60.min))
+        assertTrue(Storage.passCounting(after))
     }
 
     @Test
@@ -230,6 +231,10 @@ class StrictTest {
 
     // ---- emergency passes ----
 
+    // A pass opened at `now`, counting from a minute later (a blocked app opened).
+    private val open get() = Storage.startPass(on, now)
+    private val counting get() = Storage.meterPass(open, true, now + 1.min)
+
     @Test
     fun `no passes, no pass time`() {
         val none = on.copy(pass = null)
@@ -238,57 +243,93 @@ class StrictTest {
     }
 
     @Test
-    fun `a pass runs for all the time saved`() {
-        val running = Storage.startPass(on, now)
-        assertTrue(Storage.passRunning(running, now))
-        assertEquals(5.min, Storage.passLeftMs(running, now))
-        assertEquals(now + 5.min, Storage.passEnds(running))
-        assertTrue(Storage.passRunning(running, now + 5.min - 1))
-        assertFalse(Storage.passRunning(running, now + 5.min))
+    fun `an open pass counts nothing until a blocked app is on screen`() {
+        assertTrue(Storage.passRunning(open, now))
+        assertFalse(Storage.passCounting(open))
+        assertEquals(5.min, Storage.passLeftMs(open, now + 60.min))
+        assertTrue(Storage.passRunning(open, now + 3 * day.min))
+        assertEquals(0L, Storage.passEnds(open, now))
+    }
+
+    @Test
+    fun `a pass counts down while a blocked app is on screen`() {
+        assertTrue(Storage.passCounting(counting))
+        assertEquals(3.min, Storage.passLeftMs(counting, now + 3.min))
+        assertEquals(now + 6.min, Storage.passEnds(counting, now + 3.min))
+        assertTrue(Storage.passRunning(counting, now + 6.min - 1))
+        assertFalse(Storage.passRunning(counting, now + 6.min))
+    }
+
+    @Test
+    fun `a pass pauses when the blocked app leaves the screen`() {
+        val paused = Storage.meterPass(counting, false, now + 3.min)
+        assertFalse(Storage.passCounting(paused))
+        assertTrue(Storage.passOpen(paused))
+        assertEquals(listOf((now + 1.min) to (now + 3.min)), paused.passUses)
+        assertEquals(3.min, Storage.passLeftMs(paused, now + 30.min))
+        // And counts again from where it was.
+        val again = Storage.meterPass(paused, true, now + 40.min)
+        assertEquals(1.min, Storage.passLeftMs(again, now + 42.min))
+    }
+
+    @Test
+    fun `a counting pass's time is logged every few seconds`() {
+        assertEquals(counting, Storage.meterPass(counting, true, now + 1.min + 1_000))
+        val at = now + 1.min + Storage.PASS_CHECKPOINT_MS
+        val logged = Storage.meterPass(counting, true, at)
+        assertEquals(listOf((now + 1.min) to at), logged.passUses)
+        assertEquals(at, logged.passInUse)
+        assertEquals(Storage.passLeftMs(counting, at + 1.min), Storage.passLeftMs(logged, at + 1.min))
     }
 
     @Test
     fun `stopping early saves the rest`() {
-        val stopped = Storage.stopPass(Storage.startPass(on, now), now + 2.min)
-        assertFalse(Storage.passRunning(stopped, now + 2.min))
-        assertEquals(3.min, Storage.passSavedMs(stopped, now + 2.min))
-        // Used again: it runs for the 3 minutes left.
+        val stopped = Storage.stopPass(counting, now + 3.min)
+        assertFalse(Storage.passOpen(stopped))
+        assertFalse(Storage.passRunning(stopped, now + 3.min))
+        assertEquals(3.min, Storage.passSavedMs(stopped, now + 3.min))
+        // Used again: 3 minutes left.
         val again = Storage.startPass(stopped, now + 10.min)
         assertEquals(3.min, Storage.passLeftMs(again, now + 10.min))
     }
 
     @Test
     fun `a pass stopped late only logs up to when it ran out`() {
-        val stopped = Storage.stopPass(Storage.startPass(on, now), now + 30.min)
-        assertEquals(listOf(now to now + 5.min), stopped.passUses)
+        val stopped = Storage.stopPass(counting, now + 30.min)
+        assertEquals(listOf((now + 1.min) to (now + 6.min)), stopped.passUses)
         assertEquals(0L, Storage.passSavedMs(stopped, now + 30.min))
     }
 
     @Test
+    fun `a pass that pauses late only logs up to when it ran out`() {
+        val paused = Storage.meterPass(counting, false, now + 30.min)
+        assertEquals(listOf((now + 1.min) to (now + 6.min)), paused.passUses)
+    }
+
+    @Test
     fun `a used-up pass can't start`() {
-        val spent = Storage.stopPass(Storage.startPass(on, now), now + 5.min)
-        assertEquals(spent, Storage.startPass(spent, now + 6.min))
+        val spent = Storage.stopPass(counting, now + 6.min)
+        assertEquals(spent, Storage.startPass(spent, now + 7.min))
     }
 
     @Test
     fun `a pass refills as old use leaves its window`() {
-        val spent = Storage.stopPass(Storage.startPass(on, now), now + 5.min)
-        assertEquals(0L, Storage.passSavedMs(spent, now + 6.min))
-        assertEquals(2.min, Storage.passSavedMs(spent, now + day.min + 2.min))
-        assertEquals(5.min, Storage.passSavedMs(spent, now + day.min + 5.min))
+        val spent = Storage.stopPass(counting, now + 6.min)
+        assertEquals(0L, Storage.passSavedMs(spent, now + 7.min))
+        assertEquals(2.min, Storage.passSavedMs(spent, now + day.min + 3.min))
+        assertEquals(5.min, Storage.passSavedMs(spent, now + day.min + 6.min))
     }
 
     @Test
     fun `a partial pass gives what's left`() {
         val partly = on.copy(passUses = listOf((now - 60.min) to (now - 56.min)))
-        val running = Storage.startPass(partly, now)
-        assertEquals(1.min, Storage.passLeftMs(running, now))
+        assertEquals(1.min, Storage.passLeftMs(Storage.startPass(partly, now), now))
     }
 
     @Test
-    fun `starting a running pass again changes nothing`() {
-        val running = Storage.startPass(on, now)
-        assertEquals(running, Storage.startPass(running, now + 1.min))
+    fun `starting an open pass again changes nothing`() {
+        assertEquals(open, Storage.startPass(open, now + 1.min))
+        assertEquals(counting, Storage.startPass(counting, now + 2.min))
     }
 
     @Test
@@ -296,15 +337,32 @@ class StrictTest {
         val off = on.copy(on = false)
         assertEquals(off, Storage.startPass(off, now))
         assertFalse(Storage.passRunning(off.copy(passStarted = now), now))
+        assertFalse(Storage.passCounting(Storage.meterPass(off.copy(passStarted = now), true, now)))
+    }
+
+    @Test
+    fun `a blocked app counts nothing without an open pass`() {
+        assertEquals(on, Storage.meterPass(on, true, now))
+    }
+
+    @Test
+    fun `a restart drops the seconds not logged yet`() {
+        val logged = Storage.meterPass(counting, true, now + 1.min + Storage.PASS_CHECKPOINT_MS)
+        val restarted = Storage.passAfterRestart(logged)
+        assertFalse(Storage.passCounting(restarted))
+        assertTrue(Storage.passOpen(restarted))
+        assertEquals(logged.passUses, restarted.passUses)
+        assertEquals(open, Storage.passAfterRestart(open))
     }
 
     @Test
     fun `ending strict mode drops what's running and keeps the choices`() {
-        val busy = Storage.startPass(Storage.startCooldown(on, now), now)
+        val busy = Storage.meterPass(Storage.startPass(Storage.startCooldown(on, now), now), true, now)
         val ended = Storage.strictEnded(busy)
         assertFalse(ended.on)
         assertEquals(0L, ended.cooldownEnds)
         assertEquals(0L, ended.passStarted)
+        assertEquals(0L, ended.passInUse)
         assertNull(ended.clock)
         assertEquals(on.wayOut, ended.wayOut)
         assertEquals(on.cooldownMin, ended.cooldownMin)
@@ -366,8 +424,9 @@ class StrictTest {
 
     @Test
     fun `strict mode round-trips through JSON`() {
-        val busy = Storage.startPass(Storage.startCooldown(on, now), now).copy(
+        val busy = Storage.meterPass(Storage.startPass(Storage.startCooldown(on, now), now), true, now + 1.min).copy(
             passUses = listOf((now - 60.min) to (now - 58.min)), wayOut = Storage.WayOut.PLUG)
+        assertEquals(now + 1.min, busy.passInUse)
         assertEquals(busy, Storage.strictFromJson(Storage.strictToJson(busy)))
         val plain = Storage.Strict(pending = true)
         assertEquals(plain, Storage.strictFromJson(Storage.strictToJson(plain)))

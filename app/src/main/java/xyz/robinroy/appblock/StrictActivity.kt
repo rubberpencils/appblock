@@ -258,21 +258,24 @@ class StrictActivity : Activity() {
             addView(Ui.eyebrow(context, "left").apply { gravity = Gravity.CENTER }, Ui.lp().apply { topMargin = Ui.dp(context, 4) })
         }, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
         val chip = Ui.txt(context, "", 14f, medium = true)
-        setChip(chip, "Emergency pass on", R.color.accent_soft, R.color.accent)
         val title = Ui.display(context, "Your blocked apps are open.", 32f).apply { gravity = Gravity.CENTER }
-        val body = Ui.muted(context, "Done early? Stop the pass and keep the minutes you didn't use. " +
-            "Strict mode stays on either way.", 16f).apply { gravity = Gravity.CENTER }
+        val body = Ui.muted(context, "The pass only counts down while you're in a blocked app, so nothing's " +
+            "used up here. Done? Stop it and keep the rest. Strict mode stays on either way.", 16f)
+            .apply { gravity = Gravity.CENTER }
         addView(centered(ring, 168, chip, title, body), LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
         val stop = Ui.primaryButton(context, "Stop pass, save the rest") {
             Strict.stopPass(this@StrictActivity); tick.run()
         }
         addView(stop, Ui.lp())
-        val s = Storage.loadStrict(this@StrictActivity)
-        val total = maxOf(1L, Storage.passEnds(s) - s.passStarted)
         update = {
-            val left = Storage.passLeftMs(Storage.loadStrict(this@StrictActivity), System.currentTimeMillis())
+            val s = Storage.loadStrict(this@StrictActivity)
+            val left = Storage.passLeftMs(s, System.currentTimeMillis())
+            val total = maxOf(1L, (s.pass?.allowMin ?: 0) * 60_000L)
             clock.text = Storage.fmtClock(left)
             ring.set(left.toFloat() / total, R.color.accent)
+            // Counting only in split screen or a pop-up, with a blocked app beside this page.
+            if (Storage.passCounting(s)) setChip(chip, "Pass counting down", R.color.accent_soft, R.color.accent)
+            else setChip(chip, "Emergency pass on", R.color.surface_alt, R.color.ink)
         }
     }
 

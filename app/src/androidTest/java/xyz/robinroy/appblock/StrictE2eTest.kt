@@ -249,10 +249,12 @@ class StrictE2eTest {
     }
 
     @Test
-    fun emergencyPass_opensBlockedApps_andStoppingSavesTheRest() {
+    fun emergencyPass_opensBlockedApps_andOnlyCountsInThem() {
         freshState(mapOf(CLOCK to Rule(allowMin = 1, windowMin = 120)))
         seedUsage(CLOCK, startAgo = 11.min, endAgo = 10.min, windowMin = 120)
         strictOn(Storage.WayOut.COOLDOWN, pass = Rule(5, 1440))
+        fun saved() = Storage.passSavedMs(Storage.loadStrict(ctx), System.currentTimeMillis())
+        fun counting() = Storage.passCounting(Storage.loadStrict(ctx))
 
         openApp(CLOCK)
         waitFor(textContains("Clock is blocked"))
@@ -264,18 +266,34 @@ class StrictE2eTest {
         waitFor(textContains("Use emergency pass")).click()
         waitFor(text("Your blocked apps are open."))
 
+        // Open, but no blocked app on screen: nothing's used.
+        Thread.sleep(2000)
+        assertFalse("the pass counted outside a blocked app", counting())
+        assertEquals(5.min, saved())
+
         openApp(CLOCK)
         Thread.sleep(1500)
         assertEquals("a pass should open the blocked app", null, wallText(CLOCK))
+        assertTrue("the pass didn't count in the blocked app", eventually { counting() })
         // Its time is on the pass, not the app's limit: still the 1 minute seeded.
-        assertTrue(Storage.passRunning(Storage.loadStrict(ctx), System.currentTimeMillis()))
         assertTrue(Storage.usedMsInWindow(ctx, CLOCK, 120) < 1.min + 5_000)
+        Thread.sleep(3000)
+        assertTrue("saved ${saved()}", saved() < 5.min - 2_000)
 
-        // Stopped from its notification's button, as the user would.
+        // Out of the blocked app, it pauses.
+        openHome()
+        assertTrue("the pass didn't pause", eventually { !counting() })
+        val paused = saved()
+        Thread.sleep(3000)
+        assertEquals("the pass counted while paused", paused, saved())
+
+        // Back in, then stopped from its notification's button, as the user would.
+        openApp(CLOCK)
+        assertTrue(eventually { counting() })
         Strict.stopPass(ctx)
         assertTrue("the wall didn't come back", eventually { wallText(CLOCK) != null })
-        val saved = Storage.passSavedMs(Storage.loadStrict(ctx), System.currentTimeMillis())
-        assertTrue("saved $saved", saved in 4.min..5.min)
+        assertTrue("saved ${saved()}", saved() in 4.min..paused)
+        assertFalse(counting())
         // Strict mode stayed on the whole time.
         assertTrue(Storage.loadStrict(ctx).on)
     }

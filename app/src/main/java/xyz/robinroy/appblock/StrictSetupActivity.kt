@@ -85,9 +85,9 @@ class StrictSetupActivity : Activity() {
             isClickable = true
             setOnClickListener { passOn.toggle() }
         }, 20)
-        put(Ui.muted(this, "For real emergencies. A pass opens your blocked apps for a bit. It doesn't switch off " +
-            "strict mode, so AppBlock still can't be uninstalled or stopped. Used time comes back as it rolls " +
-            "out of the window, like your app limits.", 14f), 8)
+        put(Ui.muted(this, "For real emergencies. A pass opens your blocked apps, and only counts down while you're in one. " +
+            "It doesn't switch off strict mode, so AppBlock still can't be uninstalled or stopped. Used time " +
+            "comes back as it rolls out of the window, like your app limits.", 14f), 8)
         val startPass = last.pass ?: Storage.PASS_PRESETS.first()
         val allow = SpanPicker(this, "Allow", listOf(Storage.SpanUnit.MIN, Storage.SpanUnit.HR), startPass.allowMin)
         val window = SpanPicker(this, "In any", Storage.SpanUnit.entries, startPass.windowMin)

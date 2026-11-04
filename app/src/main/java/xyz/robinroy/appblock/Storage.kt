@@ -595,8 +595,10 @@ object Storage {
      * AppBlock a device admin. `cooldownMin` only means something for
      * COOLDOWN; `pass` is the emergency-pass budget, null without passes.
      * `cooldownEnds` and `passStarted` are wall-clock times, 0 when there's
-     * no cooldown counting or no pass running; `passUses` is the pass's own
-     * usage log, like an app's.
+     * no cooldown counting or no pass open; `passUses` is the pass's own
+     * usage log, like an app's. An open pass only counts while a blocked app
+     * is on screen: `passInUse` is when one came on screen (the time since
+     * not logged yet), 0 while none is.
      */
     data class Strict(
         val on: Boolean = false,
@@ -607,6 +609,7 @@ object Storage {
         val cooldownEnds: Long = 0,
         val passUses: List<Pair<Long, Long>> = emptyList(),
         val passStarted: Long = 0,
+        val passInUse: Long = 0,
         val clock: ClockAnchor? = null,
     )
 
@@ -687,46 +690,91 @@ object Storage {
             cooldownEnds = if (s.cooldownEnds != 0L) wall + s.cooldownMin * 60_000L else 0,
             passUses = s.passUses.map { (start, end) -> start + moved to end + moved },
             passStarted = if (s.passStarted != 0L) s.passStarted + moved else 0,
+            passInUse = if (s.passInUse != 0L) s.passInUse + moved else 0,
             clock = anchor)
     }
 
-    /** The pass time left to use, not counting a running pass: it refills as old use leaves its window. */
+    /** The pass's log, with the time counting now (a blocked app on screen under it) added. */
+    private fun passLog(s: Strict, now: Long): List<Pair<Long, Long>> =
+        if (s.passInUse != 0L && now > s.passInUse) s.passUses + (s.passInUse to now) else s.passUses
+
+    /** The pass time left to use, open or not: it refills as old use leaves its window. */
     fun passSavedMs(s: Strict, now: Long): Long {
         val pass = s.pass ?: return 0
-        return remainingMs(usedMs(s.passUses, pass.windowMin, now), pass.allowMin)
+        return remainingMs(usedMs(passLog(s, now), pass.windowMin, now), pass.allowMin)
     }
 
-    /** When the running pass runs out: all the time that was left when it started. */
-    fun passEnds(s: Strict): Long =
-        if (s.passStarted == 0L) 0 else s.passStarted + passSavedMs(s, s.passStarted)
+    /** Whether the user opened a pass (and hasn't stopped it, and it hasn't run out). */
+    fun passOpen(s: Strict) = s.on && s.passStarted != 0L
 
-    /** Whether a pass is opening the blocked apps right now. */
-    fun passRunning(s: Strict, now: Long) = s.on && s.passStarted != 0L && now < passEnds(s)
+    /** Whether a pass is opening the blocked apps right now: open, with time left. */
+    fun passRunning(s: Strict, now: Long) = passOpen(s) && passSavedMs(s, now) > 0
 
-    fun passLeftMs(s: Strict, now: Long): Long =
-        if (passRunning(s, now)) passEnds(s) - now else 0
+    /** Whether the open pass is counting down: a blocked app is on screen under it. */
+    fun passCounting(s: Strict) = passOpen(s) && s.passInUse != 0L
 
-    /** A pass started now, if there's any pass time left (and none running). */
-    fun startPass(s: Strict, now: Long): Strict =
-        if (!s.on || s.passStarted != 0L || passSavedMs(s, now) == 0L) s else s.copy(passStarted = now)
+    fun passLeftMs(s: Strict, now: Long): Long = if (passOpen(s)) passSavedMs(s, now) else 0
 
     /**
-     * The running pass stopped at `now` (by the user, or run out): its time
-     * goes into the pass's log, up to when it ran out, and what's left
-     * stays for later.
+     * When the counting pass runs out if the blocked app stays on screen (a
+     * little later if old use leaves the window first, so it's checked again
+     * then); 0 while it isn't counting.
      */
-    fun stopPass(s: Strict, now: Long): Strict {
-        val pass = s.pass
-        if (s.passStarted == 0L || pass == null) return s.copy(passStarted = 0)
-        val end = minOf(now, passEnds(s))
-        val uses = if (end > s.passStarted)
-            appendUsage(s.passUses, s.passStarted, end, now - pass.windowMin * 60_000L) else s.passUses
-        return s.copy(passUses = uses, passStarted = 0)
+    fun passEnds(s: Strict, now: Long): Long = if (passCounting(s)) now + passSavedMs(s, now) else 0
+
+    /** A pass opened now, if there's any pass time left (and none open). It counts nothing until a blocked app is on screen. */
+    fun startPass(s: Strict, now: Long): Strict =
+        if (!s.on || s.passStarted != 0L || passSavedMs(s, now) == 0L) s else s.copy(passStarted = now, passInUse = 0)
+
+    /** How often a counting pass's time is logged: a crash or restart loses at most this much. */
+    const val PASS_CHECKPOINT_MS = 5_000L
+
+    /**
+     * The open pass, told whether a blocked app is on screen (`inBlocked`)
+     * at `now`. It starts counting when one comes on screen, and stops, its
+     * time logged, when none is left; its time is not spent while you're
+     * anywhere else. While it counts, its time so far is logged every
+     * PASS_CHECKPOINT_MS.
+     */
+    fun meterPass(s: Strict, inBlocked: Boolean, now: Long): Strict = when {
+        !passOpen(s) -> if (s.passInUse != 0L) s.copy(passInUse = 0) else s
+        inBlocked && s.passInUse == 0L -> s.copy(passInUse = now)
+        inBlocked && now - s.passInUse >= PASS_CHECKPOINT_MS -> logPassUse(s, now).copy(passInUse = now)
+        !inBlocked && s.passInUse != 0L -> logPassUse(s, now)
+        else -> s
     }
+
+    /**
+     * The time counted since `passInUse` logged, up to `now` or to when the
+     * pass ran out if that was sooner, and nothing counting any more.
+     */
+    private fun logPassUse(s: Strict, now: Long): Strict {
+        val pass = s.pass
+        if (s.passInUse == 0L || pass == null || now <= s.passInUse) return s.copy(passInUse = 0)
+        val over = maxOf(0L, usedMs(passLog(s, now), pass.windowMin, now) - pass.allowMin * 60_000L)
+        val end = maxOf(s.passInUse, now - over)
+        val uses = if (end > s.passInUse)
+            appendUsage(s.passUses, s.passInUse, end, now - pass.windowMin * 60_000L) else s.passUses
+        return s.copy(passUses = uses, passInUse = 0)
+    }
+
+    /**
+     * The pass closed at `now` (by the user, or run out): the time it
+     * counted goes into its log, and what's left stays for later.
+     */
+    fun stopPass(s: Strict, now: Long): Strict = logPassUse(s, now).copy(passStarted = 0)
+
+    /**
+     * The blocker started again (after a crash, or the phone restarting):
+     * the time counting since the last log is dropped, not charged, since
+     * the phone may have been off for most of it.
+     */
+    fun passAfterRestart(s: Strict): Strict = if (s.passInUse != 0L) s.copy(passInUse = 0) else s
 
     /** Strict mode over: the choices kept for next time, everything running dropped. */
     fun strictEnded(s: Strict) =
-        s.copy(on = false, pending = false, cooldownEnds = 0, passStarted = 0, passUses = emptyList(), clock = null)
+        s.copy(on = false, pending = false, cooldownEnds = 0, passStarted = 0, passInUse = 0, passUses = emptyList(),
+            clock = null)
 
     /**
      * Whether a system screen names the app (any of its texts holds `label`,
@@ -865,7 +913,7 @@ object Storage {
     //
     //   {"on": true, "pending": false, "wayOut": "cooldown", "cooldownMin": 15,
     //    "pass": {"allow": 5, "window": 1440}, "cooldownEnds": 0,
-    //    "passUses": [[startMs, endMs], ...], "passStarted": 0,
+    //    "passUses": [[startMs, endMs], ...], "passStarted": 0, "passInUse": 0,
     //    "clock": {"wall": ms, "elapsed": ms, "boot": n}}
 
     fun strictToJson(s: Strict): String = JSONObject().apply {
@@ -877,6 +925,7 @@ object Storage {
         put("cooldownEnds", s.cooldownEnds)
         put("passUses", JSONArray().apply { for ((a, b) in s.passUses) put(JSONArray().put(a).put(b)) })
         put("passStarted", s.passStarted)
+        put("passInUse", s.passInUse)
         s.clock?.let { put("clock", JSONObject().put("wall", it.wall).put("elapsed", it.elapsed).put("boot", it.boot)) }
     }.toString()
 
@@ -893,6 +942,7 @@ object Storage {
             cooldownEnds = o.optLong("cooldownEnds"),
             passUses = (0 until uses.length()).map { uses.getJSONArray(it).let { iv -> iv.getLong(0) to iv.getLong(1) } },
             passStarted = o.optLong("passStarted"),
+            passInUse = o.optLong("passInUse"),
             clock = o.optJSONObject("clock")?.let { ClockAnchor(it.getLong("wall"), it.getLong("elapsed"), it.getInt("boot")) })
     } catch (e: Exception) { Strict() }
 

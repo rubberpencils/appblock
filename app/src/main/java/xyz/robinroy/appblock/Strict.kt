@@ -212,6 +212,22 @@ object Strict {
         changed(ctx)
     }
 
+    /**
+     * The blocker's word on the open pass: whether a blocked app is on
+     * screen under it. The pass counts only then; its notification switches
+     * between counting down and paused.
+     */
+    fun meterPass(ctx: Context, s: Storage.Strict, inBlocked: Boolean): Storage.Strict {
+        val metered = Storage.meterPass(s, inBlocked, System.currentTimeMillis())
+        if (metered == s) return s
+        Storage.saveStrict(ctx, metered)
+        if (Storage.passCounting(metered) != Storage.passCounting(s)) {
+            Log.i(TAG, if (Storage.passCounting(metered)) "pass counting" else "pass paused")
+            notifyPass(ctx, metered)
+        }
+        return metered
+    }
+
     fun stopPass(ctx: Context) {
         val s = check(ctx)
         if (s.passStarted == 0L) return
@@ -268,9 +284,27 @@ object Strict {
         "Strict mode ends soon", "Changed your mind? Keep it on.", s.cooldownEnds,
         action(ctx, "Keep it on", StrictReceiver.KEEP_ON)))
 
-    fun notifyPass(ctx: Context, s: Storage.Strict) = post(ctx, NOTIF_PASS, countdown(ctx,
-        "Emergency pass", "Your blocked apps are open. Strict mode stays on.", Storage.passEnds(s),
-        action(ctx, "Stop, save the rest", StrictReceiver.STOP_PASS)))
+    /**
+     * The open pass: counting down while a blocked app is on screen, and
+     * otherwise paused, with the time left written out.
+     */
+    fun notifyPass(ctx: Context, s: Storage.Strict) {
+        val now = System.currentTimeMillis()
+        val stop = action(ctx, "Stop, save the rest", StrictReceiver.STOP_PASS)
+        post(ctx, NOTIF_PASS, if (Storage.passCounting(s))
+            countdown(ctx, "Emergency pass", "Counting down while you're in a blocked app.",
+                Storage.passEnds(s, now), stop)
+        else Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("Emergency pass · ${Storage.fmtClock(Storage.passLeftMs(s, now))} left")
+            .setContentText("Your blocked apps are open. It only counts down while you're in one.")
+            .setShowWhen(false)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openStrict(ctx))
+            .addAction(stop)
+            .build())
+    }
 
     private fun notifyOnce(ctx: Context, title: String, text: String) = post(ctx, NOTIF_ENDED,
         Notification.Builder(ctx, CHANNEL)
@@ -283,9 +317,14 @@ object Strict {
             .setAutoCancel(true)
             .build())
 
-    /** The countdowns again, after the blocker cleared every notification on starting up. */
+    /**
+     * The blocker started: the countdowns again (it cleared every
+     * notification), and a pass that was counting when it stopped counts
+     * from now, the unlogged seconds before dropped (Storage.passAfterRestart).
+     */
     fun renotify(ctx: Context) {
-        val s = check(ctx)
+        var s = check(ctx)
+        Storage.passAfterRestart(s).let { if (it != s) { s = it; Storage.saveStrict(ctx, s) } }
         if (Storage.coolingDown(s)) notifyCooldown(ctx, s)
         if (Storage.passRunning(s, System.currentTimeMillis())) notifyPass(ctx, s)
     }

@@ -204,15 +204,14 @@ class BlockerService : AccessibilityService() {
     /** Walls over the spent apps on screen (and blocked feeds), sessions and countdowns for the other limited ones. */
     private fun enforce(windows: List<Storage.ScreenWindow>, screen: Point) {
         val now = System.currentTimeMillis()
-        val strict = Storage.loadStrict(this)
-        // An emergency pass opens every blocked app: no walls, no sessions,
-        // no countdowns, its time counted on the pass instead.
+        var strict = Storage.loadStrict(this)
+        // An emergency pass lifts the walls over spent apps and blocked
+        // feeds; apps with time left still spend their own.
         val pass = Storage.passRunning(strict, now)
-        val allRules = Storage.loadRules(this)
-        val rules = if (pass) emptyMap() else allRules
+        val rules = Storage.loadRules(this)
         val plan = Storage.plan(onScreen.keys, rules, ::spent)
 
-        for (pkg in sessions.keys - plan.timed) endSession(pkg, allRules[pkg])
+        for (pkg in sessions.keys - plan.timed) endSession(pkg, rules[pkg])
         for (pkg in plan.timed) sessions.getOrPut(pkg) { now }
 
         // The shade or power menu is open: the walls would be over it.
@@ -220,9 +219,13 @@ class BlockerService : AccessibilityService() {
         // Home already showing beside the app (it's in a pop-up over it): a
         // "Go to home screen" button would do nothing.
         val homeButton = homePackage() !in onScreen
-        val feedApps = if (pass) emptySet() else Storage.loadFeedBlocks(this)
+        val feedApps = Storage.loadFeedBlocks(this)
             .filter { it in onScreen && it !in plan.walled && Feeds.feed(it) != null }.toSet()
         watchFeeds(feedApps)
+        val feedsShowing = feedApps.filter(::feedShowing).toSet()
+        // The pass counts only while it's holding a wall back: a spent app
+        // or a blocked feed on screen.
+        if (pass) strict = Strict.meterPass(this, strict, plan.walled.isNotEmpty() || feedsShowing.isNotEmpty())
         // Strict mode: the guarded apps on screen showing AppBlock's name
         // (its App info, its Accessibility switch, the uninstall dialog...).
         strictWatch = if (strict.on) guarded else emptySet()
@@ -232,7 +235,8 @@ class BlockerService : AccessibilityService() {
         strictWalled = if (strict.on) Storage.strictWalls(strictWalled, onScreen.keys, naming) else emptySet()
         if (strictWalled != walledBefore) Log.i(TAG, "strict mode walls: $strictWalled")
         watchContent(feedApps + guardedOnScreen)
-        val kinds = Storage.wallKinds(plan.walled, feedApps.filter(::feedShowing).toSet(), strictWalled)
+        val kinds = if (pass) Storage.wallKinds(emptySet(), emptySet(), strictWalled)
+            else Storage.wallKinds(plan.walled, feedsShowing, strictWalled)
         for (pkg in walls.keys.toList()) if (stepAside || pkg !in kinds) hideWall(pkg)
         val pip = Storage.pipApps(windows)
         if (!stepAside) for ((pkg, kind) in kinds) {
@@ -253,9 +257,9 @@ class BlockerService : AccessibilityService() {
         handler.removeCallbacks(tick)
         // Walled apps are re-checked too: the wall lifts once time comes back.
         if (plan.timed.isNotEmpty() || plan.walled.isNotEmpty()) handler.postDelayed(tick, tickMs)
-        // Strict mode's own deadlines: a cooldown running out, a pass used up.
+        // Strict mode's own deadlines: a cooldown running out, a counting pass used up.
         handler.removeCallbacks(strictTick)
-        listOf(Storage.cooldownLeftMs(strict, now), Storage.passLeftMs(strict, now))
+        listOf(Storage.cooldownLeftMs(strict, now), Storage.passEnds(strict, now) - now)
             .filter { it > 0 }.minOrNull()?.let { handler.postDelayed(strictTick, it + 250) }
     }
 
