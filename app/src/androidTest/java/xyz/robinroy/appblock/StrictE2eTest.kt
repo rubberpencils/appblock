@@ -18,6 +18,7 @@ import xyz.robinroy.appblock.E2e.openApp
 import xyz.robinroy.appblock.E2e.openHome
 import xyz.robinroy.appblock.E2e.pressOk
 import xyz.robinroy.appblock.E2e.seedUsage
+import xyz.robinroy.appblock.E2e.setBlocker
 import xyz.robinroy.appblock.E2e.shell
 import xyz.robinroy.appblock.E2e.strictOn
 import xyz.robinroy.appblock.E2e.text
@@ -37,7 +38,7 @@ import org.junit.runner.RunWith
  * or uninstall AppBlock (and not over the rest of Settings), limits that
  * only get stricter, and every way out: the cooldown, plugging in, the
  * emergency pass that opens the blocked apps without ending it, adb, and
- * the admin found switched off (safe mode).
+ * the admin found switched off (safe mode, and back from it).
  */
 @RunWith(AndroidJUnit4::class)
 class StrictE2eTest {
@@ -332,6 +333,31 @@ class StrictE2eTest {
 
         assertTrue(eventually { !Storage.loadStrict(ctx).on })
         val nm = ctx.getSystemService(NotificationManager::class.java)
+        assertTrue("no notification", eventually {
+            nm.activeNotifications.any { it.notification.extras.getString("android.title") == "Strict mode ended" }
+        })
+    }
+
+    @Test
+    fun backFromSafeMode_theBlockerFindsTheAdminOff_andEndsStrictMode() {
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN)
+        val wasOn = Storage.loadStrict(ctx)
+        // Safe mode: AppBlock doesn't run while the admin is switched off,
+        // so it's never told. Here it's running, and told (the test above):
+        // with the blocker off, as on a phone that's not booted yet, the
+        // admin goes, and strict mode is put back as safe mode leaves it,
+        // still on, with no "ended" notification.
+        setBlocker(false)
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        ctx.getSystemService(android.app.admin.DevicePolicyManager::class.java).removeActiveAdmin(Strict.admin(ctx))
+        assertTrue(eventually { !Strict.adminActive(ctx) && !Storage.loadStrict(ctx).on })
+        Storage.saveStrict(ctx, wasOn)
+        nm.cancelAll()
+
+        // The normal boot after it: the blocker starts, and has to notice.
+        setBlocker(true)
+        assertTrue("strict mode still on", eventually { !Storage.loadStrict(ctx).on })
         assertTrue("no notification", eventually {
             nm.activeNotifications.any { it.notification.extras.getString("android.title") == "Strict mode ended" }
         })
