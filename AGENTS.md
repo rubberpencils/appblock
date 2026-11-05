@@ -4,7 +4,8 @@ AppBlock is a small Android app-blocker: an accessibility service watches
 which apps are on screen (the window list, split screen and pop-ups included)
 and draws a block wall over a limited app's window once it exceeds its time
 budget, and over YouTube or Instagram while Shorts or Reels is on screen if
-the user blocks them.
+the user blocks them. Strict mode, if the user turns it on, keeps AppBlock
+from being uninstalled or switched off until their chosen way out.
 "Usage access" is optional, for screen-time stats only.
 Plain Kotlin + Gradle, no Android Studio required.
 
@@ -199,6 +200,37 @@ and `v1` keeps being served to older ones.
   same daily and on rules changes; it's not a required check (it needs the
   network, and YouTube changes under us), and it reads YouTube's APK from
   a private repo release (secrets `YOUTUBE_APKS_REPO`, `YOUTUBE_APKS_TOKEN`).
+
+## Strict mode
+
+While it's on, AppBlock is a device admin (`StrictAdmin`, no policies in
+`res/xml/strict_admin.xml`), so Android refuses to uninstall it, and the
+blocker walls any screen of the "guarded" system apps (Settings, the package
+installer, the permission controller: `Strict.guardedPackages`) that shows
+AppBlock's name, until that app leaves the screen. Rules only get stricter
+(`Storage.loosens`). It ends through the user's way out (plugged in, or a
+cooldown), the admin found off (safe mode, where AppBlock doesn't run), or
+adb. The decisions are in `Storage.kt` (`StrictTest`), the moving parts in
+`Strict.kt`, the screens in `StrictActivity`/`StrictSetupActivity`, the
+end-to-end tests in `StrictE2eTest`.
+
+- Its state is its own prefs file, `strict` (`Storage.STRICT_PREFS`), left
+  out of Auto Backup by `backup_rules.xml` and `data_extraction_rules.xml`
+  (`BackupRulesTest`). Rename it and those files must follow.
+- While the admin is active nothing can uninstall AppBlock, adb and Gradle
+  included, and `adb shell dpm remove-active-admin` refuses (the app isn't
+  test-only). End strict mode first:
+
+  ```sh
+  adb shell am broadcast -a xyz.robinroy.appblock.END_STRICT -n xyz.robinroy.appblock/.EndStrictReceiver
+  ```
+
+  `scripts/fresh-install.sh` and `scripts/emulator.sh` do this before they
+  uninstall. The receiver needs the DUMP permission, which only the shell
+  has. `E2e.freshState()` and `StrictE2eTest`'s cleanup end it from inside
+  the app, so no test leaves the emulator locked.
+- `E2e.strictOn()` turns it on with `dpm set-active-admin` (allowed for any
+  admin); one test drives the system's real Activate page.
 
 ## Website
 

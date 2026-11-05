@@ -36,6 +36,11 @@ class ShortcutsTest {
     }
 
     @Test
+    fun `contact support shortcut exists`() {
+        assertTrue(shortcuts.any { it.attr("shortcutId") == "contact_support" })
+    }
+
+    @Test
     fun `every shortcut targets a real activity in this app`() {
         val declared = manifest.all("activity").map { "xyz.robinroy.appblock" + it.attr("name") }
         for (intent in shortcuts.flatMap { it.all("intent") }) {

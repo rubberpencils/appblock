@@ -12,6 +12,7 @@ cd "$(dirname "$0")/.."
 
 ./gradlew testDebugUnitTest assembleRelease
 cp app/build/outputs/apk/release/app-release.apk appblock.apk
+end_strict   # strict mode's device admin would refuse the uninstall
 "$ADB" uninstall xyz.robinroy.appblock || true   # fine if it wasn't installed
 "$ADB" shell bmgr autorestore false
 trap '"$ADB" shell bmgr autorestore true' EXIT

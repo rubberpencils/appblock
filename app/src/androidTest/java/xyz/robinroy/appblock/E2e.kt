@@ -97,6 +97,11 @@ object E2e {
         shell("pm grant $pkg android.permission.POST_NOTIFICATIONS")
         device.findObject(text("Go to home screen"))?.click()
         for (app in listOf(CLOCK, PHONE, FIXTURE)) shell("am force-stop $app")
+        // Strict mode off and its device admin let go (from inside the app:
+        // adb can't remove an admin that isn't test-only), so no test starts
+        // locked in, and Gradle can uninstall the app after the run.
+        Strict.resetForTests(ctx)
+        shell("dumpsys battery reset")
         // Switch the blocker off before wiping: a session still open from the
         // last test would otherwise be written into the wiped storage a few
         // seconds later ("1 min used" in a test that never opened the app).
@@ -112,6 +117,17 @@ object E2e {
         openHome()
         device.pressHome()
         device.waitForIdle()
+    }
+
+    /**
+     * Strict mode on with this way out, as if chosen on its setup screen and
+     * then AppBlock made a device admin (through adb here; the system's
+     * Activate page is driven in StrictE2eTest.turningOn_goesThroughTheDeviceAdminPage).
+     */
+    fun strictOn(way: Storage.WayOut, cooldownMin: Int = 15, pass: Rule? = null) {
+        Strict.choose(ctx, way, cooldownMin, pass)
+        shell("dpm set-active-admin --user 0 ${ctx.packageName}/${StrictAdmin::class.java.name}")
+        check(eventually { Storage.loadStrict(ctx).on }) { "strict mode didn't go on" }
     }
 
     /** Record that `pkg` was used from `startAgo` to `endAgo` before now. */

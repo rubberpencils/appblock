@@ -305,12 +305,16 @@ object Storage {
         return Plan(walled, timed)
     }
 
-    /** Why a wall is up: the app's time is spent, or its feed (Shorts, Reels) is on screen. */
-    enum class WallKind { SPENT, FEED }
+    /**
+     * Why a wall is up: the app's time is spent, its feed (Shorts, Reels) is
+     * on screen, or it's a system app showing a way around strict mode.
+     */
+    enum class WallKind { SPENT, FEED, STRICT }
 
     /** The walls to put up. A spent app is walled whole, whatever it's showing. */
-    fun wallKinds(spent: Set<String>, feedShowing: Set<String>): Map<String, WallKind> =
-        feedShowing.associateWith { WallKind.FEED } + spent.associateWith { WallKind.SPENT }
+    fun wallKinds(spent: Set<String>, feedShowing: Set<String>, strict: Set<String> = emptySet()): Map<String, WallKind> =
+        feedShowing.associateWith { WallKind.FEED } + spent.associateWith { WallKind.SPENT } +
+            strict.associateWith { WallKind.STRICT }
 
     // ---- picture-in-picture: the mini player YouTube shrinks into when the user goes home mid-video ----
 
@@ -442,7 +446,8 @@ object Storage {
                 "wall over one whose time is up. It only looks at which app " +
                 "each window belongs to, never at what's inside it (except " +
                 "for YouTube's Shorts player or Instagram's Reels player, if " +
-                "you block them).",
+                "you block them, and in strict mode its own name on Settings' " +
+                "screens).",
             "Required. Sees which apps are on screen and draws the wall."),
         BATTERY(
             "Unrestricted battery",
@@ -476,6 +481,21 @@ object Storage {
             if (h == 0) null else if (h == 1) "1 hr" else "$h hrs",
             if (m == 0) null else "$m min")
         return if (parts.isEmpty()) "0 min" else parts.joinToString(" ")
+    }
+
+    /** A countdown's face: "4:05", "1:02:03", "3d 4:05:06"; seconds round up, so it never shows 0:00 early. */
+    fun fmtClock(ms: Long): String {
+        val total = (maxOf(0L, ms) + 999) / 1000
+        val d = total / 86_400
+        val h = total / 3600 % 24
+        val m = total / 60 % 60
+        val s = total % 60
+        val ms2 = "%02d:%02d".format(m, s)
+        return when {
+            d > 0 -> "${d}d $h:$ms2"
+            h > 0 -> "$h:$ms2"
+            else -> "$m:%02d".format(s)
+        }
     }
 
     /** Today's screen time under an app's name on the home list. */
@@ -551,6 +571,244 @@ object Storage {
      */
     fun displayedUsedMin(usedMs: Long, allowMin: Int): Long =
         minOf(ceilMin(usedMs), allowMin.toLong())
+
+    // ---- strict mode: AppBlock locks itself in until the user's chosen way out ----
+    //
+    // While it's on, AppBlock is a device admin (so Android refuses to
+    // uninstall it), the blocker walls the system's pages that could switch
+    // it off, and the rules can only get stricter. It ends only through the
+    // way out chosen when it went on, safe mode (AppBlock finds its admin
+    // switched off), or adb.
+
+    /** How strict mode is turned off: only while the phone is plugged in, or after a cooldown. */
+    enum class WayOut { PLUG, COOLDOWN }
+
+    /**
+     * Where the phone's two clocks stood together, on boot number `boot`:
+     * the wall clock (which the user can set) and the time since boot (which
+     * they can't). Kept to catch the wall clock being moved.
+     */
+    data class ClockAnchor(val wall: Long, val elapsed: Long, val boot: Int)
+
+    /**
+     * Strict mode's state. `pending`: chosen, waiting for the user to make
+     * AppBlock a device admin. `cooldownMin` only means something for
+     * COOLDOWN; `pass` is the emergency-pass budget, null without passes.
+     * `cooldownEnds` and `passStarted` are wall-clock times, 0 when there's
+     * no cooldown counting or no pass open; `passUses` is the pass's own
+     * usage log, like an app's. An open pass only counts while a blocked app
+     * is on screen: `passInUse` is when one came on screen (the time since
+     * not logged yet), 0 while none is.
+     */
+    data class Strict(
+        val on: Boolean = false,
+        val pending: Boolean = false,
+        val wayOut: WayOut = WayOut.COOLDOWN,
+        val cooldownMin: Int = 15,
+        val pass: Rule? = null,
+        val cooldownEnds: Long = 0,
+        val passUses: List<Pair<Long, Long>> = emptyList(),
+        val passStarted: Long = 0,
+        val passInUse: Long = 0,
+        val clock: ClockAnchor? = null,
+    )
+
+    /** The cooldown's one-tap lengths, in minutes. */
+    val COOLDOWN_PRESETS = listOf(5, 15, 30, 60)
+
+    /** The emergency pass's one-tap budgets. */
+    val PASS_PRESETS = listOf(Rule(5, 1440), Rule(15, 1440), Rule(30, 10080))
+
+    /**
+     * The most minutes `rule` lets anyone use in `spanMin` straight minutes:
+     * the whole allowance, a wait, the whole allowance again. Longs: a rule
+     * of 99,999 days over a span as long overflows an Int.
+     */
+    fun maxUseMin(rule: Rule, spanMin: Long): Long =
+        rule.allowMin.toLong() * (spanMin / rule.windowMin) + minOf(rule.allowMin.toLong(), spanMin % rule.windowMin)
+
+    /**
+     * Whether changing an app's rule from `old` to `new` gives more time
+     * anywhere: strict mode allows only changes that don't. A new app
+     * (`old` null) gives none; removing one (`new` null) gives it all back.
+     *
+     * A longer window is stricter ("10 min in any day" is tighter than "10
+     * min in any hour"), and a shorter one can be too, with a small enough
+     * allowance ("1 min in any 30" is tighter than "10 in any 60"). It comes
+     * down to one number: the new rule gives more time if it allows more
+     * than `old.allowMin` within one of `old`'s windows. (Within that window
+     * it's the only thing that counts, and over any longer span the old
+     * rule's window repeats while the new rule can do no better per window.)
+     */
+    fun loosens(old: Rule?, new: Rule?): Boolean = when {
+        old == null -> false
+        new == null -> true
+        else -> maxUseMin(new, old.windowMin.toLong()) > old.allowMin
+    }
+
+    /** Whether a cooldown was started: counting down, or run out and waiting for Turn off. */
+    fun coolingDown(s: Strict) = s.on && s.cooldownEnds != 0L
+
+    /**
+     * Whether the cooldown has run out. Strict mode stays on until the user
+     * taps Turn off (or Keep it on, which locks it again).
+     */
+    fun cooldownDone(s: Strict, now: Long) = coolingDown(s) && now >= s.cooldownEnds
+
+    /** Whether Turn off works now: plugged in, or after the cooldown ran out. */
+    fun canTurnOff(s: Strict, now: Long, pluggedIn: Boolean) = s.on && when (s.wayOut) {
+        WayOut.PLUG -> pluggedIn
+        WayOut.COOLDOWN -> cooldownDone(s, now)
+    }
+
+    fun cooldownLeftMs(s: Strict, now: Long): Long =
+        if (coolingDown(s)) maxOf(0L, s.cooldownEnds - now) else 0L
+
+    fun startCooldown(s: Strict, now: Long) = s.copy(cooldownEnds = now + s.cooldownMin * 60_000L)
+
+    fun cancelCooldown(s: Strict) = s.copy(cooldownEnds = 0)
+
+    /** The wall clock may drift this much from the time since boot before it counts as moved. */
+    const val CLOCK_SLACK_MS = 60_000L
+
+    /**
+     * How far the wall clock was moved since `anchor` (positive: forward),
+     * or 0 when it wasn't: the two clocks still agree within a minute (the
+     * network's small corrections), or the phone restarted since (the time
+     * since boot starts again, so the two can't be compared).
+     */
+    fun clockMoved(anchor: ClockAnchor?, wall: Long, elapsed: Long, boot: Int): Long {
+        if (anchor == null || anchor.boot != boot) return 0
+        val drift = (wall - anchor.wall) - (elapsed - anchor.elapsed)
+        return if (Math.abs(drift) > CLOCK_SLACK_MS) drift else 0
+    }
+
+    /**
+     * Strict mode after a look at the clocks. A moved clock starts a
+     * counting cooldown over from its full length (so moving it never
+     * shortens the wait), but one that had already run out stays run out.
+     * It shifts the emergency pass's log by as much (so moving it never
+     * refills the pass). The anchor is set again after a move or a restart;
+     * otherwise it stays, so small moves add up.
+     */
+    fun afterClockCheck(s: Strict, wall: Long, elapsed: Long, boot: Int): Strict {
+        if (!s.on) return s
+        val moved = clockMoved(s.clock, wall, elapsed, boot)
+        val anchor = ClockAnchor(wall, elapsed, boot)
+        if (moved == 0L) return if (s.clock?.boot == boot) s else s.copy(clock = anchor)
+        return s.copy(
+            cooldownEnds = when {
+                s.cooldownEnds == 0L -> 0
+                // Ran out before the move: shifted with the clock, so it stays run out.
+                wall - moved >= s.cooldownEnds -> maxOf(1L, s.cooldownEnds + moved)
+                else -> wall + s.cooldownMin * 60_000L
+            },
+            passUses = s.passUses.map { (start, end) -> start + moved to end + moved },
+            passStarted = if (s.passStarted != 0L) s.passStarted + moved else 0,
+            passInUse = if (s.passInUse != 0L) s.passInUse + moved else 0,
+            clock = anchor)
+    }
+
+    /** The pass's log, with the time counting now (a blocked app on screen under it) added. */
+    private fun passLog(s: Strict, now: Long): List<Pair<Long, Long>> =
+        if (s.passInUse != 0L && now > s.passInUse) s.passUses + (s.passInUse to now) else s.passUses
+
+    /** The pass time left to use, open or not: it refills as old use leaves its window. */
+    fun passSavedMs(s: Strict, now: Long): Long {
+        val pass = s.pass ?: return 0
+        return remainingMs(usedMs(passLog(s, now), pass.windowMin, now), pass.allowMin)
+    }
+
+    /** Whether the user opened a pass (and hasn't stopped it, and it hasn't run out). */
+    fun passOpen(s: Strict) = s.on && s.passStarted != 0L
+
+    /** Whether a pass is opening the blocked apps right now: open, with time left. */
+    fun passRunning(s: Strict, now: Long) = passOpen(s) && passSavedMs(s, now) > 0
+
+    /** Whether the open pass is counting down: a blocked app is on screen under it. */
+    fun passCounting(s: Strict) = passOpen(s) && s.passInUse != 0L
+
+    fun passLeftMs(s: Strict, now: Long): Long = if (passOpen(s)) passSavedMs(s, now) else 0
+
+    /**
+     * When the counting pass runs out if the blocked app stays on screen (a
+     * little later if old use leaves the window first, so it's checked again
+     * then); 0 while it isn't counting.
+     */
+    fun passEnds(s: Strict, now: Long): Long = if (passCounting(s)) now + passSavedMs(s, now) else 0
+
+    /** A pass opened now, if there's any pass time left (and none open). It counts nothing until a blocked app is on screen. */
+    fun startPass(s: Strict, now: Long): Strict =
+        if (!s.on || s.passStarted != 0L || passSavedMs(s, now) == 0L) s else s.copy(passStarted = now, passInUse = 0)
+
+    /** How often a counting pass's time is logged: a crash or restart loses at most this much. */
+    const val PASS_CHECKPOINT_MS = 5_000L
+
+    /**
+     * The open pass, told whether a blocked app is on screen (`inBlocked`)
+     * at `now`. It starts counting when one comes on screen, and stops, its
+     * time logged, when none is left; its time is not spent while you're
+     * anywhere else. While it counts, its time so far is logged every
+     * PASS_CHECKPOINT_MS.
+     */
+    fun meterPass(s: Strict, inBlocked: Boolean, now: Long): Strict = when {
+        !passOpen(s) -> if (s.passInUse != 0L) s.copy(passInUse = 0) else s
+        inBlocked && s.passInUse == 0L -> s.copy(passInUse = now)
+        inBlocked && now - s.passInUse >= PASS_CHECKPOINT_MS -> logPassUse(s, now).copy(passInUse = now)
+        !inBlocked && s.passInUse != 0L -> logPassUse(s, now)
+        else -> s
+    }
+
+    /**
+     * The time counted since `passInUse` logged, up to `now` or to when the
+     * pass ran out if that was sooner, and nothing counting any more.
+     */
+    private fun logPassUse(s: Strict, now: Long): Strict {
+        val pass = s.pass
+        if (s.passInUse == 0L || pass == null || now <= s.passInUse) return s.copy(passInUse = 0)
+        val over = maxOf(0L, usedMs(passLog(s, now), pass.windowMin, now) - pass.allowMin * 60_000L)
+        val end = maxOf(s.passInUse, now - over)
+        val uses = if (end > s.passInUse)
+            appendUsage(s.passUses, s.passInUse, end, now - pass.windowMin * 60_000L) else s.passUses
+        return s.copy(passUses = uses, passInUse = 0)
+    }
+
+    /**
+     * The pass closed at `now` (by the user, or run out): the time it
+     * counted goes into its log, and what's left stays for later.
+     */
+    fun stopPass(s: Strict, now: Long): Strict = logPassUse(s, now).copy(passStarted = 0)
+
+    /**
+     * The blocker started again (after a crash, or the phone restarting):
+     * the time counting since the last log is dropped, not charged, since
+     * the phone may have been off for most of it.
+     */
+    fun passAfterRestart(s: Strict): Strict = if (s.passInUse != 0L) s.copy(passInUse = 0) else s
+
+    /** Strict mode over: the choices kept for next time, everything running dropped. */
+    fun strictEnded(s: Strict) =
+        s.copy(on = false, pending = false, cooldownEnds = 0, passStarted = 0, passInUse = 0, passUses = emptyList(),
+            clock = null)
+
+    /**
+     * Whether a system screen names the app (any of its texts holds `label`,
+     * "AppBlock"): its App info, its Accessibility switch and the "Stop
+     * AppBlock?" dialog, its storage, its device admin page, the uninstall
+     * dialog, Safety Center's "Remove access" card, and the lists that lead
+     * to them.
+     */
+    fun namesApp(texts: List<String>, label: String) = texts.any { it.contains(label, ignoreCase = true) }
+
+    /**
+     * The system apps to wall in strict mode: those on screen naming
+     * AppBlock (`naming`), and those walled before that are still on screen.
+     * A wall stays until its app leaves the screen, so a page doesn't come
+     * free by scrolling AppBlock's name away, and a dialog over it ("Force
+     * stop?", "Delete app data?", which don't name it) stays covered.
+     */
+    fun strictWalls(walledBefore: Set<String>, onScreen: Set<String>, naming: Set<String>): Set<String> =
+        walledBefore.intersect(onScreen) + naming
 
     // ---- persistence: JSON blobs in SharedPreferences ----
     //
@@ -661,6 +919,57 @@ object Storage {
         val usage = loadUsage(ctx)
         usage.remove(pkg)
         prefs(ctx).edit().putString("usage", usage.toString()).apply()
+    }
+
+    // Strict mode lives in a file of its own ("strict"), which Auto Backup
+    // leaves out (res/xml/backup_rules.xml, data_extraction_rules.xml): on
+    // a new phone AppBlock isn't a device admin, so a restored "on" would be
+    // a lie. One JSON blob:
+    //
+    //   {"on": true, "pending": false, "wayOut": "cooldown", "cooldownMin": 15,
+    //    "pass": {"allow": 5, "window": 1440}, "cooldownEnds": 0,
+    //    "passUses": [[startMs, endMs], ...], "passStarted": 0, "passInUse": 0,
+    //    "clock": {"wall": ms, "elapsed": ms, "boot": n}}
+
+    fun strictToJson(s: Strict): String = JSONObject().apply {
+        put("on", s.on)
+        put("pending", s.pending)
+        put("wayOut", s.wayOut.name.lowercase())
+        put("cooldownMin", s.cooldownMin)
+        s.pass?.let { put("pass", JSONObject().put("allow", it.allowMin).put("window", it.windowMin)) }
+        put("cooldownEnds", s.cooldownEnds)
+        put("passUses", JSONArray().apply { for ((a, b) in s.passUses) put(JSONArray().put(a).put(b)) })
+        put("passStarted", s.passStarted)
+        put("passInUse", s.passInUse)
+        s.clock?.let { put("clock", JSONObject().put("wall", it.wall).put("elapsed", it.elapsed).put("boot", it.boot)) }
+    }.toString()
+
+    /** Strict mode from its JSON; off (the default) when there's none or it's unreadable. */
+    fun strictFromJson(json: String?): Strict = try {
+        val o = JSONObject(json!!)
+        val uses = o.optJSONArray("passUses") ?: JSONArray()
+        Strict(
+            on = o.optBoolean("on"),
+            pending = o.optBoolean("pending"),
+            wayOut = if (o.optString("wayOut") == "plug") WayOut.PLUG else WayOut.COOLDOWN,
+            cooldownMin = o.optInt("cooldownMin", 15),
+            pass = o.optJSONObject("pass")?.let { Rule(it.getInt("allow"), it.getInt("window")) },
+            cooldownEnds = o.optLong("cooldownEnds"),
+            passUses = (0 until uses.length()).map { uses.getJSONArray(it).let { iv -> iv.getLong(0) to iv.getLong(1) } },
+            passStarted = o.optLong("passStarted"),
+            passInUse = o.optLong("passInUse"),
+            clock = o.optJSONObject("clock")?.let { ClockAnchor(it.getLong("wall"), it.getLong("elapsed"), it.getInt("boot")) })
+    } catch (e: Exception) { Strict() }
+
+    /** The file name Auto Backup is told to leave out ("strict.xml" on disk). */
+    const val STRICT_PREFS = "strict"
+
+    fun loadStrict(ctx: Context): Strict =
+        strictFromJson(ctx.getSharedPreferences(STRICT_PREFS, Context.MODE_PRIVATE).getString("state", null))
+
+    /** Written at once (commit): a receiver or the service may read it straight after. */
+    fun saveStrict(ctx: Context, s: Strict) {
+        ctx.getSharedPreferences(STRICT_PREFS, Context.MODE_PRIVATE).edit().putString("state", strictToJson(s)).commit()
     }
 
     // Convenience wrappers joining persistence with the pure math above.
