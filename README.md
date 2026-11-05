@@ -45,8 +45,9 @@ on the home screen and pick your way out:
 
 - **Plug in to unlock:** the Turn off button only works while the phone is
   plugged in.
-- **Cooldown:** tap Stop, wait out a timer you chose (minutes, hours or days),
-  and it's off. Change your mind any time before then.
+- **Cooldown:** tap Stop and wait out a timer you chose (minutes, hours or
+  days). Then Turn off works, but strict mode stays on until you tap it. Change
+  your mind any time: Keep it on locks it again.
 
 While it's on:
 

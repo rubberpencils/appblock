@@ -133,7 +133,7 @@ object Strict {
 
     /**
      * Strict mode, brought up to date: the clock checked, a cooldown that ran
-     * out ends it, a pass that ran out is stopped, and an admin found off
+     * out unlocks Turn off, a pass that ran out is stopped, and an admin found off
      * (switched off in safe mode, where AppBlock doesn't run) ends it too.
      * Run whenever AppBlock looks at strict mode: the screens, the blocker,
      * the clock-change receiver.
@@ -156,7 +156,8 @@ object Strict {
             if (Storage.coolingDown(s)) notifyCooldown(ctx, s)
             if (Storage.passRunning(s, now)) notifyPass(ctx, s)
         }
-        if (Storage.cooldownDone(s, now)) return end(ctx, Ending.COOLDOWN)
+        // Run out: strict mode stays on, its notification now says Turn off is unlocked.
+        if (Storage.cooldownDone(s, now) && unlockShown != s.cooldownEnds) notifyCooldown(ctx, s)
         if (s.passStarted != 0L && !Storage.passRunning(s, now)) {
             s = Storage.stopPass(s, now)
             Storage.saveStrict(ctx, s)
@@ -170,8 +171,8 @@ object Strict {
     /**
      * Strict mode over: the running cooldown and pass dropped with their
      * notifications, and the admin let go so AppBlock can be uninstalled
-     * as usual. Safe mode and a finished cooldown are told in a notification
-     * (the user may not be looking at AppBlock).
+     * as usual. Safe mode is told in a notification (the user may not be
+     * looking at AppBlock).
      */
     fun end(ctx: Context, why: Ending): Storage.Strict {
         val s = Storage.strictEnded(Storage.loadStrict(ctx))
@@ -182,8 +183,6 @@ object Strict {
         Log.i(TAG, "off: $why")
         when (why) {
             Ending.ADMIN_OFF -> notifyOnce(ctx, "Strict mode ended", "AppBlock's device admin was switched off.")
-            Ending.COOLDOWN -> notifyOnce(ctx, "Strict mode is off",
-                "Your cooldown is over. AppBlock can be uninstalled and its limits loosened again.")
             else -> {}
         }
         changed(ctx)
@@ -207,11 +206,11 @@ object Strict {
         changed(ctx)
     }
 
-    /** Turn strict mode off by the plug-in way out: only while plugged in. */
-    fun turnOffPlugged(ctx: Context): Boolean {
+    /** Turn strict mode off by the way out: only while plugged in, or once the cooldown ran out. */
+    fun turnOff(ctx: Context): Boolean {
         val s = check(ctx)
-        if (!s.on || s.wayOut != Storage.WayOut.PLUG || !pluggedIn(ctx)) return false
-        end(ctx, Ending.PLUGGED_IN)
+        if (!Storage.canTurnOff(s, System.currentTimeMillis(), pluggedIn(ctx))) return false
+        end(ctx, if (s.wayOut == Storage.WayOut.PLUG) Ending.PLUGGED_IN else Ending.COOLDOWN)
         return true
     }
 
@@ -292,9 +291,34 @@ object Strict {
         try { nm(ctx).notify(id, n) } catch (e: Exception) { Log.w(TAG, "notification $id refused", e) }
     }
 
-    fun notifyCooldown(ctx: Context, s: Storage.Strict) = post(ctx, NOTIF_COOLDOWN, countdown(ctx,
-        "Strict mode ends soon", "Changed your mind? Keep it on.", s.cooldownEnds,
-        action(ctx, "Keep it on", StrictReceiver.KEEP_ON)))
+    /** The cooldown whose "run out" notification is up, so check() posts it once, not on every look. */
+    @Volatile private var unlockShown = 0L
+
+    /**
+     * The cooldown: counting down, then once it runs out, that Turn off is
+     * unlocked. Both stay up (strict mode is still on) with Keep it on.
+     */
+    fun notifyCooldown(ctx: Context, s: Storage.Strict) {
+        val keepOn = action(ctx, "Keep it on", StrictReceiver.KEEP_ON)
+        if (!Storage.cooldownDone(s, System.currentTimeMillis())) {
+            unlockShown = 0
+            post(ctx, NOTIF_COOLDOWN, countdown(ctx, "Turn off unlocks soon", "Changed your mind? Keep it on.",
+                s.cooldownEnds, keepOn))
+            return
+        }
+        unlockShown = s.cooldownEnds
+        val text = "Turn off is unlocked. Strict mode stays on until you tap it."
+        post(ctx, NOTIF_COOLDOWN, Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle("Cooldown over")
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(openStrict(ctx))
+            .addAction(keepOn)
+            .build())
+    }
 
     /**
      * The open pass: counting down while a blocked app is on screen, and

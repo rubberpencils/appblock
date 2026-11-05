@@ -263,7 +263,7 @@ class BlockerService : AccessibilityService() {
             .filter { it > 0 }.minOrNull()?.let { handler.postDelayed(strictTick, it + 250) }
     }
 
-    /** At a cooldown's or a pass's end: Strict.check ends it, then the walls follow. */
+    /** At a cooldown's or a pass's end: Strict.check unlocks Turn off or stops the pass, then the walls follow. */
     private val strictTick = Runnable {
         Strict.check(this)
         refresh()

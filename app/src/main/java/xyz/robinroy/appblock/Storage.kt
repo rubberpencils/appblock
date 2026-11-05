@@ -646,11 +646,20 @@ object Storage {
         else -> maxUseMin(new, old.windowMin.toLong()) > old.allowMin
     }
 
-    /** Whether a cooldown is counting down. */
+    /** Whether a cooldown was started: counting down, or run out and waiting for Turn off. */
     fun coolingDown(s: Strict) = s.on && s.cooldownEnds != 0L
 
-    /** Whether the cooldown has run out: strict mode ends. */
+    /**
+     * Whether the cooldown has run out. Strict mode stays on until the user
+     * taps Turn off (or Keep it on, which locks it again).
+     */
     fun cooldownDone(s: Strict, now: Long) = coolingDown(s) && now >= s.cooldownEnds
+
+    /** Whether Turn off works now: plugged in, or after the cooldown ran out. */
+    fun canTurnOff(s: Strict, now: Long, pluggedIn: Boolean) = s.on && when (s.wayOut) {
+        WayOut.PLUG -> pluggedIn
+        WayOut.COOLDOWN -> cooldownDone(s, now)
+    }
 
     fun cooldownLeftMs(s: Strict, now: Long): Long =
         if (coolingDown(s)) maxOf(0L, s.cooldownEnds - now) else 0L
@@ -677,9 +686,10 @@ object Storage {
     /**
      * Strict mode after a look at the clocks. A moved clock starts a
      * counting cooldown over from its full length (so moving it never
-     * shortens the wait), and shifts the emergency pass's log by as much (so
-     * moving it never refills the pass). The anchor is set again after a
-     * move or a restart; otherwise it stays, so small moves add up.
+     * shortens the wait), but one that had already run out stays run out.
+     * It shifts the emergency pass's log by as much (so moving it never
+     * refills the pass). The anchor is set again after a move or a restart;
+     * otherwise it stays, so small moves add up.
      */
     fun afterClockCheck(s: Strict, wall: Long, elapsed: Long, boot: Int): Strict {
         if (!s.on) return s
@@ -687,7 +697,12 @@ object Storage {
         val anchor = ClockAnchor(wall, elapsed, boot)
         if (moved == 0L) return if (s.clock?.boot == boot) s else s.copy(clock = anchor)
         return s.copy(
-            cooldownEnds = if (s.cooldownEnds != 0L) wall + s.cooldownMin * 60_000L else 0,
+            cooldownEnds = when {
+                s.cooldownEnds == 0L -> 0
+                // Ran out before the move: shifted with the clock, so it stays run out.
+                wall - moved >= s.cooldownEnds -> maxOf(1L, s.cooldownEnds + moved)
+                else -> wall + s.cooldownMin * 60_000L
+            },
             passUses = s.passUses.map { (start, end) -> start + moved to end + moved },
             passStarted = if (s.passStarted != 0L) s.passStarted + moved else 0,
             passInUse = if (s.passInUse != 0L) s.passInUse + moved else 0,

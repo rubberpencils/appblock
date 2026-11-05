@@ -131,6 +131,53 @@ class StrictTest {
         assertFalse(Storage.cooldownDone(off, now + 100.min))
     }
 
+    // ---- turning it off ----
+
+    @Test
+    fun `a run-out cooldown unlocks Turn off and leaves strict mode on`() {
+        val cooling = Storage.startCooldown(on, now)
+        assertFalse(Storage.canTurnOff(cooling, now, pluggedIn = false))
+        assertFalse(Storage.canTurnOff(cooling, now + 15.min - 1, pluggedIn = false))
+        assertTrue(Storage.canTurnOff(cooling, now + 15.min, pluggedIn = false))
+        // It stays unlocked, and strict mode on, however long nobody taps it.
+        assertTrue(Storage.canTurnOff(cooling, now + 30 * day.min, pluggedIn = false))
+        assertTrue(cooling.on)
+        assertTrue(Storage.coolingDown(cooling))
+    }
+
+    @Test
+    fun `no cooldown, no Turn off, plugged in or not`() {
+        assertFalse(Storage.canTurnOff(on, now + 100.min, pluggedIn = false))
+        assertFalse(Storage.canTurnOff(on, now + 100.min, pluggedIn = true))
+    }
+
+    @Test
+    fun `keep it on locks a run-out cooldown again`() {
+        val kept = Storage.cancelCooldown(Storage.startCooldown(on, now))
+        assertFalse(Storage.canTurnOff(kept, now + 20.min, pluggedIn = false))
+        assertFalse(Storage.coolingDown(kept))
+        // And the next one waits its full length again.
+        val again = Storage.startCooldown(kept, now + 20.min)
+        assertFalse(Storage.canTurnOff(again, now + 34.min, pluggedIn = false))
+        assertTrue(Storage.canTurnOff(again, now + 35.min, pluggedIn = false))
+    }
+
+    @Test
+    fun `the plug way unlocks only while plugged in`() {
+        val plug = on.copy(wayOut = Storage.WayOut.PLUG)
+        assertTrue(Storage.canTurnOff(plug, now, pluggedIn = true))
+        assertFalse(Storage.canTurnOff(plug, now, pluggedIn = false))
+        // A cooldown means nothing to it.
+        assertFalse(Storage.canTurnOff(plug.copy(cooldownEnds = now - 1.min), now, pluggedIn = false))
+    }
+
+    @Test
+    fun `nothing turns off strict mode that's off`() {
+        val off = Storage.strictEnded(Storage.startCooldown(on, now))
+        assertFalse(Storage.canTurnOff(off, now + 100.min, pluggedIn = true))
+        assertFalse(Storage.canTurnOff(off.copy(wayOut = Storage.WayOut.PLUG), now, pluggedIn = true))
+    }
+
     // ---- the clock ----
 
     private val anchor = Storage.ClockAnchor(wall = now, elapsed = 50.min, boot = 7)
@@ -165,6 +212,34 @@ class StrictTest {
         val after = Storage.afterClockCheck(cooling, now + 70.min, 60.min, 7)
         assertEquals(15.min, Storage.cooldownLeftMs(after, now + 70.min))
         assertEquals(Storage.ClockAnchor(now + 70.min, 60.min, 7), after.clock)
+    }
+
+    @Test
+    fun `moving the clock past a counting cooldown's end doesn't unlock Turn off`() {
+        val cooling = Storage.startCooldown(on, now)
+        // 10 minutes in, an hour ahead: well past the end, but it starts over.
+        val after = Storage.afterClockCheck(cooling, now + 70.min, 60.min, 7)
+        assertFalse(Storage.canTurnOff(after, now + 70.min, pluggedIn = false))
+        assertTrue(Storage.canTurnOff(after, now + 85.min, pluggedIn = false))
+    }
+
+    @Test
+    fun `moving the clock after the cooldown ran out keeps Turn off unlocked`() {
+        val cooling = Storage.startCooldown(on, now)
+        // 20 minutes in (5 past the end), the clock goes an hour back...
+        val back = Storage.afterClockCheck(cooling, now - 40.min, 70.min, 7)
+        assertTrue(Storage.canTurnOff(back, now - 40.min, pluggedIn = false))
+        // ...or an hour ahead.
+        val ahead = Storage.afterClockCheck(cooling, now + 80.min, 70.min, 7)
+        assertTrue(Storage.canTurnOff(ahead, now + 80.min, pluggedIn = false))
+    }
+
+    @Test
+    fun `a cooldown that runs out on the dot of a move counts as run out`() {
+        val cooling = Storage.startCooldown(on, now)
+        // Exactly 15 minutes in, the clock goes an hour back.
+        val back = Storage.afterClockCheck(cooling, now - 45.min, 65.min, 7)
+        assertTrue(Storage.canTurnOff(back, now - 45.min, pluggedIn = false))
     }
 
     @Test

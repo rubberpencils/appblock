@@ -20,13 +20,14 @@ import android.widget.TextView
  * Strict mode, from the home screen's pill. Off: choose the way out (plug
  * in, or a cooldown), which leads to StrictSetupActivity. On: the way out
  * itself (the Turn off button that only works plugged in, or the cooldown
- * to start and cancel), and the emergency pass, if there is one. The page
+ * to start and cancel, after which Turn off works), and the emergency pass,
+ * if there is one. The page
  * follows strict mode as it changes, ticking every second.
  */
 class StrictActivity : Activity() {
 
     /** What the page shows; it's built anew when this changes, and only updated in between. */
-    private enum class Phase { CHOOSE, PLUG, COOLDOWN, COOLING, PASS, ENDED }
+    private enum class Phase { CHOOSE, PLUG, COOLDOWN, COOLING, UNLOCKED, PASS, ENDED }
 
     private val handler = Handler(Looper.getMainLooper())
     private var phase: Phase? = null
@@ -58,11 +59,12 @@ class StrictActivity : Activity() {
                 when {
                     Storage.passRunning(s, now) -> Phase.PASS
                     s.wayOut == Storage.WayOut.PLUG -> Phase.PLUG
+                    Storage.cooldownDone(s, now) -> Phase.UNLOCKED
                     Storage.coolingDown(s) -> Phase.COOLING
                     else -> Phase.COOLDOWN
                 }
             }
-            // Ended while this page was open (the cooldown ran out, plugged-in Turn off).
+            // Ended while this page was open (Turn off, or safe mode or adb).
             wasOn -> Phase.ENDED
             else -> Phase.CHOOSE
         }
@@ -81,6 +83,7 @@ class StrictActivity : Activity() {
             Phase.CHOOSE -> choosePage()
             Phase.PLUG -> plugPage()
             Phase.COOLDOWN, Phase.COOLING -> cooldownPage(p == Phase.COOLING, s)
+            Phase.UNLOCKED -> unlockedPage()
             Phase.PASS -> passPage()
             Phase.ENDED -> endedPage()
         }
@@ -112,7 +115,7 @@ class StrictActivity : Activity() {
             "The Turn off button stays greyed out until your phone is plugged in.", Storage.WayOut.PLUG),
             Ui.lp().apply { topMargin = Ui.dp(context, 24) })
         addView(wayCard(R.drawable.ic_timer, R.color.warn_soft, R.color.warn, "Cooldown",
-            "Tap stop, wait out a timer you set, and it's off.", Storage.WayOut.COOLDOWN),
+            "Tap stop, wait out a timer you set, then turn it off.", Storage.WayOut.COOLDOWN),
             Ui.lp().apply { topMargin = Ui.dp(context, 14) })
         addView(Ui.muted(context, "Both come with optional emergency passes.", 13f).apply {
             gravity = Gravity.CENTER
@@ -173,7 +176,7 @@ class StrictActivity : Activity() {
         val title = Ui.display(context, "", 32f).apply { gravity = Gravity.CENTER }
         val body = Ui.muted(context, "", 16f).apply { gravity = Gravity.CENTER }
         val turnOff = Ui.secondaryButton(context, "Turn off strict mode") {
-            if (Strict.turnOffPlugged(this@StrictActivity)) tick.run()
+            if (Strict.turnOff(this@StrictActivity)) tick.run()
         }
         addView(centered(circle, 120, chip, title, body), LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
         passButton()?.let { addView(it, Ui.lp().apply { bottomMargin = Ui.dp(context, 10) }) }
@@ -212,7 +215,7 @@ class StrictActivity : Activity() {
         val title = Ui.display(context, if (counting) "Hang tight. Still locked." else "Want out? You'll have to wait.", 32f)
             .apply { gravity = Gravity.CENTER }
         val body = Ui.muted(context, if (counting) "Most urges fade before the timer does. Leave this screen and it keeps counting."
-            else "Tap Stop and strict mode turns off after a ${Storage.fmtSpan(s.cooldownMin)} cooldown. " +
+            else "Tap Stop, and after a ${Storage.fmtSpan(s.cooldownMin)} cooldown you can turn strict mode off. " +
                 "Everything stays locked until then.", 16f).apply { gravity = Gravity.CENTER }
         addView(centered(ring, 168, chip, title, body), LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
         if (counting) {
@@ -231,6 +234,32 @@ class StrictActivity : Activity() {
             clock.text = Storage.fmtClock(left)
             ring.set(if (counting) 1f - left.toFloat() / total else 0f, R.color.warn)
         }
+    }
+
+    // ------------------------------------------------ on: cooldown run out
+
+    /** The cooldown ran out: Turn off works, but strict mode stays on until it's tapped. */
+    private fun unlockedPage() = column().apply {
+        val ring = Ring(context).apply { set(1f, R.color.accent) }
+        ring.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(Ui.display(context, Storage.fmtClock(0), 34f).apply { gravity = Gravity.CENTER }, Ui.lp())
+            addView(Ui.eyebrow(context, "left").apply { gravity = Gravity.CENTER }, Ui.lp().apply { topMargin = Ui.dp(context, 4) })
+        }, FrameLayout.LayoutParams(Ui.MATCH, Ui.MATCH))
+        val chip = Ui.txt(context, "", 14f, medium = true)
+        setChip(chip, "Cooldown over", R.color.accent_soft, R.color.accent)
+        addView(centered(ring, 168, chip,
+            Ui.display(context, "Cooldown over. Turn off is unlocked.", 32f).apply { gravity = Gravity.CENTER },
+            Ui.muted(context, "Strict mode stays on until you turn it off. Changed your mind? Keep it on.", 16f)
+                .apply { gravity = Gravity.CENTER }),
+            LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        addView(Ui.primaryButton(context, "Keep strict mode on") {
+            Strict.cancelCooldown(this@StrictActivity); tick.run()
+        }, Ui.lp().apply { bottomMargin = Ui.dp(context, 10) })
+        addView(Ui.secondaryButton(context, "Turn off strict mode") {
+            if (Strict.turnOff(this@StrictActivity)) tick.run()
+        }, Ui.lp())
     }
 
     // ------------------------------------------------------------- the pass

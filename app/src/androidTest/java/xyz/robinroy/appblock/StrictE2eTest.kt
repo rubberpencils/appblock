@@ -216,7 +216,7 @@ class StrictE2eTest {
     }
 
     @Test
-    fun cooldown_startsAndCancels_thenEndsStrictModeWhenItRunsOut() {
+    fun cooldown_startsAndCancels_thenUnlocksTurnOffWhenItRunsOut() {
         freshState()
         strictOn(Storage.WayOut.COOLDOWN, cooldownMin = 15)
         openHome()
@@ -231,15 +231,49 @@ class StrictE2eTest {
         waitFor(text("Want out? You'll have to wait."))
         assertFalse(Storage.coolingDown(Storage.loadStrict(ctx)))
 
-        // Started again, with 3 seconds left of it: the blocker ends it on time.
+        // Started again, with 3 seconds left of it, and the page left: the
+        // blocker notices it run out on time. Strict mode stays on.
         waitFor(text("Stop strict mode")).click()
         waitFor(text("Hang tight. Still locked."))
-        Storage.saveStrict(ctx, Storage.loadStrict(ctx).copy(cooldownEnds = System.currentTimeMillis() + 3_000))
-        BlockerService.instance!!.strictChanged()
+        runsOutIn3s()
+        assertEquals("Turn off unlocks soon", cooldownNotification())
+        device.pressHome()
+        assertTrue("no Cooldown over notification", eventually(15_000) { cooldownNotification() == "Cooldown over" })
+        assertTrue(Storage.loadStrict(ctx).on)
+        assertTrue(Strict.adminActive(ctx))
 
-        waitFor(text("Strict mode is off."), 15_000)
+        // Changed their mind: Keep it on locks it again.
+        openHome()
+        waitFor(By.desc("Strict mode is on")).click()
+        waitFor(text("Cooldown over. Turn off is unlocked."))
+        waitFor(text("Keep strict mode on")).click()
+        waitFor(text("Want out? You'll have to wait."))
+        assertFalse(Storage.coolingDown(Storage.loadStrict(ctx)))
+        assertTrue("the cooldown's notification stayed", eventually { cooldownNotification() == null })
+
+        // Once more, on this page: it unlocks as it runs out, and Turn off ends it.
+        waitFor(text("Stop strict mode")).click()
+        waitFor(text("Hang tight. Still locked."))
+        runsOutIn3s()
+        waitFor(text("Cooldown over. Turn off is unlocked."), 15_000)
+        assertTrue(Storage.loadStrict(ctx).on)
+        waitFor(text("Turn off strict mode")).click()
+        waitFor(text("Strict mode is off."))
         assertFalse(Storage.loadStrict(ctx).on)
         assertTrue("the admin wasn't let go", eventually { !Strict.adminActive(ctx) })
+        assertTrue("the cooldown's notification stayed", eventually { cooldownNotification() == null })
+    }
+
+    /** The title of the cooldown's notification up now, counting or run out; null with none. */
+    private fun cooldownNotification(): String? =
+        ctx.getSystemService(NotificationManager::class.java).activeNotifications
+            .map { it.notification.extras.getString("android.title") }
+            .firstOrNull { it == "Turn off unlocks soon" || it == "Cooldown over" }
+
+    /** The counting cooldown, moved to 3 seconds from its end; the blocker told. */
+    private fun runsOutIn3s() {
+        Storage.saveStrict(ctx, Storage.loadStrict(ctx).copy(cooldownEnds = System.currentTimeMillis() + 3_000))
+        BlockerService.instance!!.strictChanged()
     }
 
     @Test
