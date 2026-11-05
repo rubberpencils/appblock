@@ -204,7 +204,7 @@ and `v1` keeps being served to older ones.
 
 The same Pages site serves the pages in `web/` at its root: `web/index.html`
 is `appblock.robinroy.xyz/`, `web/privacy/index.html` is `/privacy/` (the
-Play Store listing links to it). Plain HTML and one `style.css`, no
+Play Store listing links to it), `web/terms/index.html` is `/terms/`. Plain HTML and one `style.css`, no
 generator. `Publish site` copies `web/` as is, then the signed rules on top,
 on every push to `main` that changes `web/` or `rules/`. It refuses a
 `web/v1/` (or any folder named like a rules format: that path is the
