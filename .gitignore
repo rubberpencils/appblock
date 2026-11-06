@@ -20,3 +20,6 @@ keystore.properties
 
 # Signs rules/v1/rules.json (./gradlew signRules) — never commit it
 rules-signing-key.pem
+
+# Launch trailer work: movie clips and renders (scripts in trailer/src)
+trailer/
