@@ -162,8 +162,9 @@
             </intent-filter>
         </receiver>
 
-        <!-- The clock being set (a counting cooldown starts over), and the
-             buttons on strict mode's notifications (sent to it by name). -->
+        <!-- The clock being set (Clock.check: the usage logs move with it, a
+             counting cooldown starts over), and the buttons on strict
+             mode's notifications (sent to it by name). -->
         <receiver
             android:name=".StrictReceiver"
             android:exported="false">

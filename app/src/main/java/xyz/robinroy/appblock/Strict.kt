@@ -13,7 +13,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Bundle
-import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 
@@ -82,11 +81,6 @@ object Strict {
         (ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             ?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
 
-    private fun boot(ctx: Context) = Settings.Global.getInt(ctx.contentResolver, Settings.Global.BOOT_COUNT, 0)
-
-    private fun anchor(ctx: Context) =
-        Storage.ClockAnchor(System.currentTimeMillis(), SystemClock.elapsedRealtime(), boot(ctx))
-
     /** Chosen on the setup screen: waits for the user to make AppBlock a device admin. */
     fun choose(ctx: Context, wayOut: Storage.WayOut, cooldownMin: Int, pass: Rule?) {
         Storage.saveStrict(ctx, Storage.loadStrict(ctx).copy(
@@ -110,7 +104,7 @@ object Strict {
         if (s.on) return
         if (!s.pending) { Log.i(TAG, "admin enabled outside strict mode: letting go"); releaseAdmin(ctx); return }
         Storage.saveStrict(ctx, s.copy(on = true, pending = false, cooldownEnds = 0, passStarted = 0,
-            passInUse = 0, passUses = emptyList(), clock = anchor(ctx)))
+            passInUse = 0, passUses = emptyList()))
         Log.i(TAG, "on: ${s.wayOut}, cooldown ${s.cooldownMin} min, pass ${s.pass}")
         changed(ctx)
     }
@@ -132,13 +126,15 @@ object Strict {
     }
 
     /**
-     * Strict mode, brought up to date: the clock checked, a cooldown that ran
-     * out unlocks Turn off, a pass that ran out is stopped, and an admin found off
-     * (switched off in safe mode, where AppBlock doesn't run) ends it too.
-     * Run whenever AppBlock looks at strict mode: the screens, the blocker,
-     * the clock-change receiver.
+     * Strict mode, brought up to date: the clock checked (Clock.check, which
+     * moves the usage logs too), a cooldown that ran out unlocks Turn off, a
+     * pass that ran out is stopped, and an admin found off (switched off in
+     * safe mode, where AppBlock doesn't run) ends it too. Run whenever
+     * AppBlock looks at strict mode: the screens, the blocker, the
+     * clock-change receiver.
      */
     fun check(ctx: Context): Storage.Strict {
+        Clock.check(ctx)
         var s = Storage.loadStrict(ctx)
         if (!s.on) {
             // An admin left over with strict mode off (an ending that didn't
@@ -148,14 +144,6 @@ object Strict {
         }
         if (!adminActive(ctx)) return end(ctx, Ending.ADMIN_OFF)
         val now = System.currentTimeMillis()
-        val checked = Storage.afterClockCheck(s, now, SystemClock.elapsedRealtime(), boot(ctx))
-        if (checked != s) {
-            if (checked.cooldownEnds != s.cooldownEnds) Log.i(TAG, "the clock moved: cooldown starts over")
-            s = checked
-            Storage.saveStrict(ctx, s)
-            if (Storage.coolingDown(s)) notifyCooldown(ctx, s)
-            if (Storage.passRunning(s, now)) notifyPass(ctx, s)
-        }
         // Run out: strict mode stays on, its notification now says Turn off is unlocked.
         if (Storage.cooldownDone(s, now) && unlockShown != s.cooldownEnds) notifyCooldown(ctx, s)
         if (s.passStarted != 0L && !Storage.passRunning(s, now)) {
@@ -166,6 +154,21 @@ object Strict {
             Log.i(TAG, "pass used up")
         }
         return s
+    }
+
+    /**
+     * The clock was moved by `moved` (Clock.check): a counting cooldown
+     * starts over and the pass's times move with it (Storage.afterClockMove),
+     * and their countdowns, which count to a wall-clock time, are posted again.
+     */
+    fun clockMoved(ctx: Context, moved: Long, wall: Long) {
+        val s = Storage.loadStrict(ctx)
+        val after = Storage.afterClockMove(s, moved, wall)
+        if (after == s) return
+        Storage.saveStrict(ctx, after)
+        if (after.cooldownEnds != s.cooldownEnds) Log.i(TAG, "the clock moved: cooldown starts over")
+        if (Storage.coolingDown(after)) notifyCooldown(ctx, after)
+        if (Storage.passRunning(after, wall)) notifyPass(ctx, after)
     }
 
     /**
@@ -400,8 +403,9 @@ class StrictAdmin : DeviceAdminReceiver() {
 }
 
 /**
- * The clock being set (strict mode restarts a counting cooldown), and the
- * buttons on strict mode's notifications.
+ * The clock being set (Strict.check runs Clock.check: the usage logs and
+ * strict mode's times move with it), and the buttons on strict mode's
+ * notifications.
  */
 class StrictReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {

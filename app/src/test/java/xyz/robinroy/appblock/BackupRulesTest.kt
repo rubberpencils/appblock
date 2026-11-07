@@ -8,11 +8,12 @@ import org.junit.Test
 import org.w3c.dom.Element
 
 /**
- * Auto Backup keeps the rules and usage, and leaves strict mode out: on a
+ * Auto Backup keeps the rules and usage, and leaves strict mode out (on a
  * new phone AppBlock isn't a device admin, so a restored "on" would be a
- * lie. Android reads the file name with its ".xml", and Android 12+ reads
- * cloud backups and phone-to-phone transfers from separate sections, so
- * each is checked. (A real restore can't be tested: it kills the app's
+ * lie) and the clock's anchor (about this phone's clocks since it booted).
+ * Android reads the file name with its ".xml", and Android 12+ reads cloud
+ * backups and phone-to-phone transfers from separate sections, so each is
+ * checked. (A real restore can't be tested: it kills the app's
  * process, which the e2e tests run in.)
  */
 class BackupRulesTest {
@@ -29,18 +30,18 @@ class BackupRulesTest {
 
     private fun excludes(e: Element) = e.all("exclude").map { it.getAttribute("domain") to it.getAttribute("path") }
 
-    private val strictFile = "sharedpref" to "${Storage.STRICT_PREFS}.xml"
+    private val leftOut = listOf("sharedpref" to "${Storage.STRICT_PREFS}.xml", "sharedpref" to "${Storage.CLOCK_PREFS}.xml")
 
     @Test
-    fun `android 11 and older leave out strict mode, and only it`() {
-        assertEquals(listOf(strictFile), excludes(parse("src/main/res/xml/backup_rules.xml")))
+    fun `android 11 and older leave out strict mode and the clock, and only them`() {
+        assertEquals(leftOut, excludes(parse("src/main/res/xml/backup_rules.xml")))
     }
 
     @Test
-    fun `android 12 and newer leave it out of cloud backups and transfers`() {
+    fun `android 12 and newer leave them out of cloud backups and transfers`() {
         val rules = parse("src/main/res/xml/data_extraction_rules.xml")
         for (section in listOf("cloud-backup", "device-transfer")) {
-            assertEquals(section, listOf(strictFile), excludes(rules.all(section).single()))
+            assertEquals(section, leftOut, excludes(rules.all(section).single()))
         }
     }
 

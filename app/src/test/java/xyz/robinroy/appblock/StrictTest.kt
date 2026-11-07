@@ -2,7 +2,6 @@ package xyz.robinroy.appblock
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,7 +17,7 @@ class StrictTest {
     private val day = 1440
 
     private val on = Storage.Strict(on = true, wayOut = Storage.WayOut.COOLDOWN, cooldownMin = 15,
-        pass = Rule(5, day), clock = Storage.ClockAnchor(now, 50.min, 7))
+        pass = Rule(5, day))
 
     // ---- loosening ----
 
@@ -178,47 +177,27 @@ class StrictTest {
         assertFalse(Storage.canTurnOff(off.copy(wayOut = Storage.WayOut.PLUG), now, pluggedIn = true))
     }
 
-    // ---- the clock ----
+    // ---- the clock (ClockTest has the anchor itself) ----
 
     private val anchor = Storage.ClockAnchor(wall = now, elapsed = 50.min, boot = 7)
 
-    @Test
-    fun `clocks that agree haven't moved`() {
-        assertEquals(0L, Storage.clockMoved(anchor, now + 30.min, 80.min, 7))
-    }
-
-    @Test
-    fun `small network corrections are ignored`() {
-        assertEquals(0L, Storage.clockMoved(anchor, now + 30.min + 50_000, 80.min, 7))
-        assertEquals(0L, Storage.clockMoved(anchor, now + 30.min - 50_000, 80.min, 7))
-    }
-
-    @Test
-    fun `a clock set forward or back is caught`() {
-        assertEquals(2 * 60.min, Storage.clockMoved(anchor, now + 30.min + 2 * 60.min, 80.min, 7))
-        assertEquals(-60.min, Storage.clockMoved(anchor, now + 30.min - 60.min, 80.min, 7))
-    }
-
-    @Test
-    fun `after a restart the clocks can't be compared`() {
-        assertEquals(0L, Storage.clockMoved(anchor, now + 5 * 60.min, 1.min, 8))
-        assertEquals(0L, Storage.clockMoved(null, now, 1.min, 8))
-    }
+    /** Strict mode after the clocks read `wall` and `elapsed` on boot `boot`, against `anchor`. */
+    private fun afterClockCheck(s: Storage.Strict, wall: Long, elapsed: Long, boot: Int) =
+        Storage.afterClockMove(s, Storage.clockMoved(anchor, wall, elapsed, boot), wall)
 
     @Test
     fun `moving the clock forward restarts a counting cooldown`() {
         val cooling = Storage.startCooldown(on, now)
         // 10 minutes in, the clock jumps an hour ahead.
-        val after = Storage.afterClockCheck(cooling, now + 70.min, 60.min, 7)
+        val after = afterClockCheck(cooling, now + 70.min, 60.min, 7)
         assertEquals(15.min, Storage.cooldownLeftMs(after, now + 70.min))
-        assertEquals(Storage.ClockAnchor(now + 70.min, 60.min, 7), after.clock)
     }
 
     @Test
     fun `moving the clock past a counting cooldown's end doesn't unlock Turn off`() {
         val cooling = Storage.startCooldown(on, now)
         // 10 minutes in, an hour ahead: well past the end, but it starts over.
-        val after = Storage.afterClockCheck(cooling, now + 70.min, 60.min, 7)
+        val after = afterClockCheck(cooling, now + 70.min, 60.min, 7)
         assertFalse(Storage.canTurnOff(after, now + 70.min, pluggedIn = false))
         assertTrue(Storage.canTurnOff(after, now + 85.min, pluggedIn = false))
     }
@@ -227,10 +206,10 @@ class StrictTest {
     fun `moving the clock after the cooldown ran out keeps Turn off unlocked`() {
         val cooling = Storage.startCooldown(on, now)
         // 20 minutes in (5 past the end), the clock goes an hour back...
-        val back = Storage.afterClockCheck(cooling, now - 40.min, 70.min, 7)
+        val back = afterClockCheck(cooling, now - 40.min, 70.min, 7)
         assertTrue(Storage.canTurnOff(back, now - 40.min, pluggedIn = false))
         // ...or an hour ahead.
-        val ahead = Storage.afterClockCheck(cooling, now + 80.min, 70.min, 7)
+        val ahead = afterClockCheck(cooling, now + 80.min, 70.min, 7)
         assertTrue(Storage.canTurnOff(ahead, now + 80.min, pluggedIn = false))
     }
 
@@ -238,40 +217,28 @@ class StrictTest {
     fun `a cooldown that runs out on the dot of a move counts as run out`() {
         val cooling = Storage.startCooldown(on, now)
         // Exactly 15 minutes in, the clock goes an hour back.
-        val back = Storage.afterClockCheck(cooling, now - 45.min, 65.min, 7)
+        val back = afterClockCheck(cooling, now - 45.min, 65.min, 7)
         assertTrue(Storage.canTurnOff(back, now - 45.min, pluggedIn = false))
     }
 
     @Test
     fun `moving the clock back restarts it too`() {
         val cooling = Storage.startCooldown(on, now)
-        val after = Storage.afterClockCheck(cooling, now - 50.min, 60.min, 7)
+        val after = afterClockCheck(cooling, now - 50.min, 60.min, 7)
         assertEquals(15.min, Storage.cooldownLeftMs(after, now - 50.min))
     }
 
     @Test
-    fun `an unmoved clock leaves everything, anchor included`() {
+    fun `an unmoved clock leaves everything`() {
         val cooling = Storage.startCooldown(on, now)
-        assertEquals(cooling, Storage.afterClockCheck(cooling, now + 10.min, 60.min, 7))
+        assertEquals(cooling, afterClockCheck(cooling, now + 10.min, 60.min, 7))
     }
 
     @Test
-    fun `small moves add up against the first anchor`() {
+    fun `a restart keeps the cooldown`() {
         val cooling = Storage.startCooldown(on, now)
-        // 40 s ahead: under the slack, nothing changes, the anchor stays.
-        val first = Storage.afterClockCheck(cooling, now + 40_000, 50.min, 7)
-        assertEquals(cooling, first)
-        // Another 40 s: 80 s off the first anchor, caught.
-        val second = Storage.afterClockCheck(first, now + 80_000, 50.min, 7)
-        assertEquals(15.min, Storage.cooldownLeftMs(second, now + 80_000))
-    }
-
-    @Test
-    fun `a restart sets a new anchor and keeps the cooldown`() {
-        val cooling = Storage.startCooldown(on, now)
-        val after = Storage.afterClockCheck(cooling, now + 5.min, 1.min, 8)
+        val after = afterClockCheck(cooling, now + 5.min, 1.min, 8)
         assertEquals(cooling.cooldownEnds, after.cooldownEnds)
-        assertEquals(Storage.ClockAnchor(now + 5.min, 1.min, 8), after.clock)
     }
 
     @Test
@@ -280,28 +247,22 @@ class StrictTest {
         val used = on.copy(passUses = listOf((now - 30.min) to (now - 26.min)))
         assertEquals(1.min, Storage.passSavedMs(used, now))
         // A day ahead would age that use out; the log moves with the clock.
-        val after = Storage.afterClockCheck(used, now + day.min, 50.min, 7)
+        val after = afterClockCheck(used, now + day.min, 50.min, 7)
         assertEquals(1.min, Storage.passSavedMs(after, now + day.min))
     }
 
     @Test
     fun `moving the clock keeps a counting pass's time`() {
         val counting = Storage.meterPass(Storage.startPass(on, now), true, now)
-        val after = Storage.afterClockCheck(counting, now + 2.min + 60.min, 52.min, 7)
+        val after = afterClockCheck(counting, now + 2.min + 60.min, 52.min, 7)
         assertEquals(3.min, Storage.passLeftMs(after, now + 2.min + 60.min))
         assertTrue(Storage.passCounting(after))
     }
 
     @Test
-    fun `the clock isn't watched while strict mode is off`() {
-        val off = Storage.Strict()
-        assertEquals(off, Storage.afterClockCheck(off, now, 1.min, 1))
-    }
-
-    @Test
-    fun `the first look sets the anchor`() {
-        val unanchored = on.copy(clock = null)
-        assertEquals(Storage.ClockAnchor(now, 1.min, 3), Storage.afterClockCheck(unanchored, now, 1.min, 3).clock)
+    fun `moving the clock leaves strict mode that's off alone`() {
+        val off = Storage.Strict(cooldownEnds = now)
+        assertEquals(off, Storage.afterClockMove(off, 60.min, now + 60.min))
     }
 
     // ---- emergency passes ----
@@ -438,7 +399,6 @@ class StrictTest {
         assertEquals(0L, ended.cooldownEnds)
         assertEquals(0L, ended.passStarted)
         assertEquals(0L, ended.passInUse)
-        assertNull(ended.clock)
         assertEquals(on.wayOut, ended.wayOut)
         assertEquals(on.cooldownMin, ended.cooldownMin)
         assertEquals(on.pass, ended.pass)

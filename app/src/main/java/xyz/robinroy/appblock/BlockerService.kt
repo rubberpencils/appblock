@@ -19,6 +19,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.text.SpannableString
 import android.text.style.AbsoluteSizeSpan
 import android.text.style.ForegroundColorSpan
@@ -62,7 +63,10 @@ class BlockerService : AccessibilityService() {
     private val tickMs = 5_000L
 
     private var onScreen: Map<String, Storage.Bounds> = emptyMap()
-    private val sessions = mutableMapOf<String, Long>()   // limited app on screen -> when its session started
+    // Limited app on screen -> where the clocks stood when its session
+    // started or was last logged (Storage.sessionSpan: the user can move
+    // the wall clock, not the time since boot).
+    private val sessions = mutableMapOf<String, Storage.ClockAnchor>()
     private val walls = mutableMapOf<String, Wall>()      // spent app on screen -> the wall over it
     private val timers = mutableMapOf<String, Timer>()    // app -> the countdown notification up for it
     private val timerIds = mutableMapOf<String, Int>()    // app -> its notification id, kept for the service's life
@@ -159,6 +163,8 @@ class BlockerService : AccessibilityService() {
     private fun refresh() {
         handler.removeCallbacks(refreshNow)
         refreshQueued = false
+        // The clock moved since the last look: the usage logs move with it first.
+        Clock.check(this)
         // Screen off or locked: nothing's being used, and a wall must never
         // cover the lock screen.
         val usable = getSystemService(PowerManager::class.java).isInteractive &&
@@ -212,7 +218,7 @@ class BlockerService : AccessibilityService() {
         val plan = Storage.plan(onScreen.keys, rules, ::spent)
 
         for (pkg in sessions.keys - plan.timed) endSession(pkg, rules[pkg])
-        for (pkg in plan.timed) sessions.getOrPut(pkg) { now }
+        for (pkg in plan.timed) sessions.getOrPut(pkg) { clocksNow() }
 
         // The shade or power menu is open: the walls would be over it.
         val stepAside = Storage.systemOnTop(windows, screen.y)
@@ -298,10 +304,11 @@ class BlockerService : AccessibilityService() {
 
     /** Every few seconds while a limited app is on screen: log the time so far, then re-check. */
     private val tick = Runnable {
+        Clock.check(this)
         val rules = Storage.loadRules(this)
-        val now = System.currentTimeMillis()
+        val now = clocksNow()
         for (session in sessions.entries) {
-            rules[session.key]?.let { Storage.addUsage(this, session.key, session.value, now, it.windowMin) }
+            rules[session.key]?.let { logSession(session.key, session.value, now, it) }
             session.setValue(now)
         }
         refresh()
@@ -309,8 +316,17 @@ class BlockerService : AccessibilityService() {
 
     /** `pkg` left the screen (or ran out): log its session. */
     private fun endSession(pkg: String, rule: Rule?) {
-        val start = sessions.remove(pkg) ?: return
-        if (rule != null) Storage.addUsage(this, pkg, start, System.currentTimeMillis(), rule.windowMin)
+        val since = sessions.remove(pkg) ?: return
+        if (rule != null) logSession(pkg, since, clocksNow(), rule)
+    }
+
+    /** Where both clocks stand now (the boot count unused: a session never outlives a boot). */
+    private fun clocksNow() = Storage.ClockAnchor(System.currentTimeMillis(), SystemClock.elapsedRealtime(), 0)
+
+    /** Log `pkg`'s use since `since` up to `now` (Storage.sessionSpan). */
+    private fun logSession(pkg: String, since: Storage.ClockAnchor, now: Storage.ClockAnchor, rule: Rule) {
+        val (start, end) = Storage.sessionSpan(since, now.wall, now.elapsed)
+        Storage.addUsage(this, pkg, start, end, rule.windowMin)
     }
 
     // ------------------------------------------------------------------ feeds

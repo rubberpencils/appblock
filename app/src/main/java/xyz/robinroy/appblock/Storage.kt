@@ -572,6 +572,63 @@ object Storage {
     fun displayedUsedMin(usedMs: Long, allowMin: Int): Long =
         minOf(ceilMin(usedMs), allowMin.toLong())
 
+    // ---- the clock: everything time-stamped moves with it ----
+    //
+    // The usage logs and strict mode's times are wall-clock times, and the
+    // user can set the wall clock to anything: forward, and the rolling
+    // window no longer holds the time they used; back, and it lies in the
+    // future. So AppBlock watches for the clock being moved and shifts every
+    // stored time by as much, so past use keeps its age (issue #7).
+
+    /**
+     * Where the phone's two clocks stood together, on boot number `boot`:
+     * the wall clock (which the user can set) and the time since boot (which
+     * they can't). Kept to catch the wall clock being moved.
+     */
+    data class ClockAnchor(val wall: Long, val elapsed: Long, val boot: Int)
+
+    /** The wall clock may drift this much from the time since boot before it counts as moved. */
+    const val CLOCK_SLACK_MS = 60_000L
+
+    /**
+     * How far the wall clock was moved since `anchor` (positive: forward),
+     * or 0 when it wasn't: the two clocks still agree within a minute (the
+     * network's small corrections), or the phone restarted since (the time
+     * since boot starts again, so the two can't be compared). A time since
+     * boot that went backwards is a restart too, whatever the boot count says.
+     */
+    fun clockMoved(anchor: ClockAnchor?, wall: Long, elapsed: Long, boot: Int): Long {
+        if (anchor == null || anchor.boot != boot || elapsed < anchor.elapsed) return 0
+        val drift = (wall - anchor.wall) - (elapsed - anchor.elapsed)
+        return if (Math.abs(drift) > CLOCK_SLACK_MS) drift else 0
+    }
+
+    /**
+     * The anchor after a look at the clocks: set again after a move, a
+     * restart or on the first look; otherwise the old one stays, so small
+     * moves add up.
+     */
+    fun nextAnchor(anchor: ClockAnchor?, wall: Long, elapsed: Long, boot: Int): ClockAnchor =
+        if (anchor != null && anchor.boot == boot && elapsed >= anchor.elapsed &&
+            clockMoved(anchor, wall, elapsed, boot) == 0L) anchor
+        else ClockAnchor(wall, elapsed, boot)
+
+    /**
+     * The span to log for a session on screen since `since` (where both
+     * clocks stood when it started or was last logged), the clocks now
+     * reading `wall` and `elapsed`. It starts where the last log ended, so a
+     * running session stays one entry in the log (appendUsage merges it);
+     * but if the clock moved meanwhile, it's as long as the app was really
+     * on screen, ending now.
+     */
+    fun sessionSpan(since: ClockAnchor, wall: Long, elapsed: Long): Pair<Long, Long> =
+        if (clockMoved(since, wall, elapsed, since.boot) == 0L) since.wall to wall
+        else wall - (elapsed - since.elapsed) to wall
+
+    /** A usage log with the clock moved `by` ms: every entry keeps its age. */
+    fun shiftLog(log: List<Pair<Long, Long>>, by: Long): List<Pair<Long, Long>> =
+        log.map { (start, end) -> start + by to end + by }
+
     // ---- strict mode: AppBlock locks itself in until the user's chosen way out ----
     //
     // While it's on, AppBlock is a device admin (so Android refuses to
@@ -582,13 +639,6 @@ object Storage {
 
     /** How strict mode is turned off: only while the phone is plugged in, or after a cooldown. */
     enum class WayOut { PLUG, COOLDOWN }
-
-    /**
-     * Where the phone's two clocks stood together, on boot number `boot`:
-     * the wall clock (which the user can set) and the time since boot (which
-     * they can't). Kept to catch the wall clock being moved.
-     */
-    data class ClockAnchor(val wall: Long, val elapsed: Long, val boot: Int)
 
     /**
      * Strict mode's state. `pending`: chosen, waiting for the user to make
@@ -610,7 +660,6 @@ object Storage {
         val passUses: List<Pair<Long, Long>> = emptyList(),
         val passStarted: Long = 0,
         val passInUse: Long = 0,
-        val clock: ClockAnchor? = null,
     )
 
     /** The cooldown's one-tap lengths, in minutes. */
@@ -668,34 +717,15 @@ object Storage {
 
     fun cancelCooldown(s: Strict) = s.copy(cooldownEnds = 0)
 
-    /** The wall clock may drift this much from the time since boot before it counts as moved. */
-    const val CLOCK_SLACK_MS = 60_000L
-
     /**
-     * How far the wall clock was moved since `anchor` (positive: forward),
-     * or 0 when it wasn't: the two clocks still agree within a minute (the
-     * network's small corrections), or the phone restarted since (the time
-     * since boot starts again, so the two can't be compared).
+     * Strict mode after the clock was moved by `moved` (clockMoved), now
+     * reading `wall`. A counting cooldown starts over from its full length
+     * (so moving the clock never shortens the wait), but one that had
+     * already run out stays run out. The emergency pass's log shifts by as
+     * much (so moving the clock never refills the pass).
      */
-    fun clockMoved(anchor: ClockAnchor?, wall: Long, elapsed: Long, boot: Int): Long {
-        if (anchor == null || anchor.boot != boot) return 0
-        val drift = (wall - anchor.wall) - (elapsed - anchor.elapsed)
-        return if (Math.abs(drift) > CLOCK_SLACK_MS) drift else 0
-    }
-
-    /**
-     * Strict mode after a look at the clocks. A moved clock starts a
-     * counting cooldown over from its full length (so moving it never
-     * shortens the wait), but one that had already run out stays run out.
-     * It shifts the emergency pass's log by as much (so moving it never
-     * refills the pass). The anchor is set again after a move or a restart;
-     * otherwise it stays, so small moves add up.
-     */
-    fun afterClockCheck(s: Strict, wall: Long, elapsed: Long, boot: Int): Strict {
-        if (!s.on) return s
-        val moved = clockMoved(s.clock, wall, elapsed, boot)
-        val anchor = ClockAnchor(wall, elapsed, boot)
-        if (moved == 0L) return if (s.clock?.boot == boot) s else s.copy(clock = anchor)
+    fun afterClockMove(s: Strict, moved: Long, wall: Long): Strict {
+        if (!s.on || moved == 0L) return s
         return s.copy(
             cooldownEnds = when {
                 s.cooldownEnds == 0L -> 0
@@ -703,10 +733,9 @@ object Storage {
                 wall - moved >= s.cooldownEnds -> maxOf(1L, s.cooldownEnds + moved)
                 else -> wall + s.cooldownMin * 60_000L
             },
-            passUses = s.passUses.map { (start, end) -> start + moved to end + moved },
+            passUses = shiftLog(s.passUses, moved),
             passStarted = if (s.passStarted != 0L) s.passStarted + moved else 0,
-            passInUse = if (s.passInUse != 0L) s.passInUse + moved else 0,
-            clock = anchor)
+            passInUse = if (s.passInUse != 0L) s.passInUse + moved else 0)
     }
 
     /** The pass's log, with the time counting now (a blocked app on screen under it) added. */
@@ -788,8 +817,7 @@ object Storage {
 
     /** Strict mode over: the choices kept for next time, everything running dropped. */
     fun strictEnded(s: Strict) =
-        s.copy(on = false, pending = false, cooldownEnds = 0, passStarted = 0, passInUse = 0, passUses = emptyList(),
-            clock = null)
+        s.copy(on = false, pending = false, cooldownEnds = 0, passStarted = 0, passInUse = 0, passUses = emptyList())
 
     /**
      * Whether a system screen names the app (any of its texts holds `label`,
@@ -874,17 +902,26 @@ object Storage {
     /**
      * The usage log after recording [start, end]: entries that ended before
      * `cutoff` dropped, and the new one merged into the last when it picks up
-     * where that one stopped. The service flushes a running session every
-     * few seconds, so without merging a week-long window would hold
-     * thousands of entries.
+     * where that one stopped (sessionSpan). The service flushes a running
+     * session every few seconds, so without merging a week-long window would hold
+     * thousands of entries. A session that starts before the last entry
+     * (the clock set back without AppBlock seeing it) is an entry of its
+     * own, never swallowed by that one.
      */
     fun appendUsage(log: List<Pair<Long, Long>>, start: Long, end: Long, cutoff: Long):
         List<Pair<Long, Long>> {
         val kept = log.filter { it.second > cutoff }.toMutableList()
         val last = kept.lastOrNull()
-        if (last != null && start <= last.second) kept[kept.lastIndex] = last.first to maxOf(last.second, end)
+        if (last != null && start >= last.first && start <= last.second)
+            kept[kept.lastIndex] = last.first to maxOf(last.second, end)
         else kept += start to end
         return kept
+    }
+
+    private fun putIntervals(usage: JSONObject, pkg: String, log: List<Pair<Long, Long>>) {
+        usage.put(pkg, JSONArray().apply {
+            for ((s, e) in log) put(JSONArray().put(s).put(e))
+        })
     }
 
     /** Record that `pkg` was used from `start` to `end`, dropping entries too old to matter. */
@@ -892,11 +929,35 @@ object Storage {
         if (end <= start) return
         val all = loadUsage(ctx)
         val cutoff = System.currentTimeMillis() - windowMin * 60_000L
-        val log = appendUsage(loadIntervals(ctx, pkg), start, end, cutoff)
-        all.put(pkg, JSONArray().apply {
-            for ((s, e) in log) put(JSONArray().put(s).put(e))
-        })
+        putIntervals(all, pkg, appendUsage(loadIntervals(ctx, pkg), start, end, cutoff))
         prefs(ctx).edit().putString("usage", all.toString()).apply()
+    }
+
+    /** Every app's usage log shifted `by` ms, the clock having moved as much (shiftLog). */
+    fun shiftUsage(ctx: Context, by: Long) {
+        val all = loadUsage(ctx)
+        for (pkg in all.keys().asSequence().toList()) putIntervals(all, pkg, shiftLog(loadIntervals(ctx, pkg), by))
+        prefs(ctx).edit().putString("usage", all.toString()).commit()
+    }
+
+    // The clock anchor (ClockAnchor) lives in a file of its own ("clock"),
+    // which Auto Backup leaves out like strict mode's: it describes this
+    // phone's clocks since its last boot, meaningless on another phone.
+    //
+    //   {"wall": ms, "elapsed": ms, "boot": n}
+
+    /** The file name Auto Backup is told to leave out ("clock.xml" on disk). */
+    const val CLOCK_PREFS = "clock"
+
+    fun loadClockAnchor(ctx: Context): ClockAnchor? = try {
+        ctx.getSharedPreferences(CLOCK_PREFS, Context.MODE_PRIVATE).getString("anchor", null)
+            ?.let { JSONObject(it) }?.let { ClockAnchor(it.getLong("wall"), it.getLong("elapsed"), it.getInt("boot")) }
+    } catch (e: Exception) { null }
+
+    /** Written at once (commit): the logs are shifted right after, and must never be shifted twice. */
+    fun saveClockAnchor(ctx: Context, a: ClockAnchor) {
+        ctx.getSharedPreferences(CLOCK_PREFS, Context.MODE_PRIVATE).edit().putString("anchor",
+            JSONObject().put("wall", a.wall).put("elapsed", a.elapsed).put("boot", a.boot).toString()).commit()
     }
 
     /** The apps whose short-video feed the user blocked: `"feedBlocks": ["com.google.android.youtube"]`. */
@@ -928,8 +989,9 @@ object Storage {
     //
     //   {"on": true, "pending": false, "wayOut": "cooldown", "cooldownMin": 15,
     //    "pass": {"allow": 5, "window": 1440}, "cooldownEnds": 0,
-    //    "passUses": [[startMs, endMs], ...], "passStarted": 0, "passInUse": 0,
-    //    "clock": {"wall": ms, "elapsed": ms, "boot": n}}
+    //    "passUses": [[startMs, endMs], ...], "passStarted": 0, "passInUse": 0}
+    //
+    // (Up to 2.4.0 it held a "clock" anchor of its own too, now the app's one: CLOCK_PREFS.)
 
     fun strictToJson(s: Strict): String = JSONObject().apply {
         put("on", s.on)
@@ -941,7 +1003,6 @@ object Storage {
         put("passUses", JSONArray().apply { for ((a, b) in s.passUses) put(JSONArray().put(a).put(b)) })
         put("passStarted", s.passStarted)
         put("passInUse", s.passInUse)
-        s.clock?.let { put("clock", JSONObject().put("wall", it.wall).put("elapsed", it.elapsed).put("boot", it.boot)) }
     }.toString()
 
     /** Strict mode from its JSON; off (the default) when there's none or it's unreadable. */
@@ -957,8 +1018,7 @@ object Storage {
             cooldownEnds = o.optLong("cooldownEnds"),
             passUses = (0 until uses.length()).map { uses.getJSONArray(it).let { iv -> iv.getLong(0) to iv.getLong(1) } },
             passStarted = o.optLong("passStarted"),
-            passInUse = o.optLong("passInUse"),
-            clock = o.optJSONObject("clock")?.let { ClockAnchor(it.getLong("wall"), it.getLong("elapsed"), it.getInt("boot")) })
+            passInUse = o.optLong("passInUse"))
     } catch (e: Exception) { Strict() }
 
     /** The file name Auto Backup is told to leave out ("strict.xml" on disk). */
