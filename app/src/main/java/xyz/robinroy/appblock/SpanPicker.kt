@@ -52,36 +52,85 @@ class SpanPicker(private val context: Context, label: String, private val units:
         field.setSelection(field.text.length)
     }
 
+    private val stepper = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(Ui.iconButton(context, R.drawable.ic_minus, "$label: less", 40) { step(false) })
+        addView(field, Ui.lp(Ui.dp(context, 64)).apply {
+            marginStart = Ui.dp(context, 6); marginEnd = Ui.dp(context, 6)
+        })
+        addView(Ui.iconButton(context, R.drawable.ic_plus, "$label: more", 40) { step(true) })
+    }
+
+    private val unitBar = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        background = Ui.shape(context, R.color.surface_alt, 14f)
+        val p = Ui.dp(context, 3)
+        setPadding(p, p, p, p)
+        for (u in units) {
+            val seg = Ui.txt(context, u.label, 14f, R.color.muted, medium = true).apply {
+                gravity = Gravity.CENTER
+                maxLines = 1
+                setPadding(Ui.dp(context, 9), Ui.dp(context, 8), Ui.dp(context, 9), Ui.dp(context, 8))
+                isClickable = true
+                setOnClickListener { unit = u; paintUnits(); changed() }
+            }
+            segments[u] = seg
+            addView(seg, Ui.lp(Ui.WRAP))
+        }
+    }
+
     val view: View = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         addView(Ui.eyebrow(context, label))
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+        addView(SideBySide(context, stepper, unitBar), Ui.lp().apply { topMargin = Ui.dp(context, 8) })
+    }
+
+    /**
+     * The number and the units side by side when they fit (most phones, most
+     * font sizes); the units on a row of their own, full width, when they
+     * don't (a narrow card, a large font). Units in full words are wide.
+     */
+    private class SideBySide(context: Context, private val left: View, private val right: LinearLayout) :
+        LinearLayout(context) {
+        private val gap = Ui.dp(context, 12)
+        private var stacked: Boolean? = null
+
+        init {
             gravity = Gravity.CENTER_VERTICAL
-            addView(Ui.iconButton(context, R.drawable.ic_minus, "$label: less", 40) { step(false) })
-            addView(field, Ui.lp(Ui.dp(context, 64)).apply {
-                marginStart = Ui.dp(context, 6); marginEnd = Ui.dp(context, 6)
-            })
-            addView(Ui.iconButton(context, R.drawable.ic_plus, "$label: more", 40) { step(true) })
-        }, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
-        // The units on a row of their own: in full words they don't fit beside the number.
-        addView(LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = Ui.shape(context, R.color.surface_alt, 14f)
-            val p = Ui.dp(context, 3)
-            setPadding(p, p, p, p)
-            for (u in units) {
-                val seg = Ui.txt(context, u.label, 14f, R.color.muted, medium = true).apply {
-                    gravity = Gravity.CENTER
-                    maxLines = 1
-                    setPadding(Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 8))
-                    isClickable = true
-                    setOnClickListener { unit = u; paintUnits(); changed() }
-                }
-                segments[u] = seg
-                addView(seg, Ui.lp(0).apply { weight = 1f })
+            addView(left, Ui.lp(Ui.WRAP))
+            addView(right, Ui.lp(Ui.WRAP))
+        }
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val free = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            stack(false)
+            left.measure(free, free)
+            right.measure(free, free)
+            val width = MeasureSpec.getSize(widthSpec)
+            stack(MeasureSpec.getMode(widthSpec) != MeasureSpec.UNSPECIFIED &&
+                left.measuredWidth + gap + right.measuredWidth > width)
+            super.onMeasure(widthSpec, heightSpec)
+        }
+
+        private fun stack(on: Boolean) {
+            if (stacked == on) return
+            stacked = on
+            orientation = if (on) VERTICAL else HORIZONTAL
+            (right.layoutParams as LayoutParams).apply {
+                this.width = if (on) LayoutParams.MATCH_PARENT else LayoutParams.WRAP_CONTENT
+                weight = 0f
+                topMargin = if (on) gap / 2 else 0
+                marginStart = if (on) 0 else gap
+                gravity = if (on) Gravity.NO_GRAVITY else Gravity.CENTER_VERTICAL
             }
-        }, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
+            // Side by side the units sit at the right; stacked they share the row.
+            (left.layoutParams as LayoutParams).apply { this.width = LayoutParams.WRAP_CONTENT; weight = if (on) 0f else 1f }
+            for (i in 0 until right.childCount) (right.getChildAt(i).layoutParams as LayoutParams).apply {
+                this.width = if (on) 0 else LayoutParams.WRAP_CONTENT
+                weight = if (on) 1f else 0f
+            }
+        }
     }
 
     init {

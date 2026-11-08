@@ -104,7 +104,12 @@ class HomeE2eTest {
         openHome()
         openLimitDialog("Clock")
 
-        waitFor(text("30 minutes in 4 hours")).click()
+        // The picks scroll sideways; in full words this one starts out of view.
+        waitFor(text("5 minutes in 2 hours"))
+        val pick = device.findObject(By.clazz(android.widget.HorizontalScrollView::class.java))
+            .scrollUntil(androidx.test.uiautomator.Direction.RIGHT, Until.findObject(text("30 minutes in 4 hours")))
+        assertTrue("the 30-in-4 quick pick isn't there", pick != null)
+        pick.click()
         pressOk()
 
         waitFor(text("30 minutes in any 4 hours · 0 seconds used"))
