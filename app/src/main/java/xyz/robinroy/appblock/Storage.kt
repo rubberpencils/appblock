@@ -455,6 +455,19 @@ object Storage {
      */
     fun phrases(vararg parts: String): String = parts.joinToString(" · ") { it.replace(' ', '\u00A0') }
 
+    /** The countdown notification before any warning: "Allowance for the next 2 hours." */
+    fun allowanceNote(windowMin: Int) = "Allowance for the next ${fmtSpan(windowMin)}."
+
+    /** Strict mode's cooldown, before it's started: "...after a cooldown of 15 minutes you can..." */
+    fun cooldownNote(cooldownMin: Int) =
+        "Tap Stop, and after a cooldown of ${fmtSpan(cooldownMin)} you can turn strict mode off. " +
+            "Everything stays locked until then."
+
+    /** An app's line in the picker: "22 minutes today · 2 hours 5 minutes last 7 days", like the home list's "today". */
+    fun pickerUsage(todayMs: Long, weekMs: Long): String =
+        if (todayMs == 0L && weekMs == 0L) "Not used in the last 7 days"
+        else phrases(fmtToday(todayMs), "${fmtScreenTime(weekMs)} last 7 days")
+
     /** "1 minute", "5 minutes": a count and its unit, in full words. */
     private fun count(n: Long, unit: String) = if (n == 1L) "1 $unit" else "$n ${unit}s"
 

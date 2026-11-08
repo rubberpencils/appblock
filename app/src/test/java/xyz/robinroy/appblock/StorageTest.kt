@@ -127,6 +127,24 @@ class StorageTest {
     }
 
     @Test
+    fun `notes read as sentences in full words`() {
+        assertEquals("Allowance for the next 2 hours.", Storage.allowanceNote(120))
+        assertEquals("Allowance for the next 1 day 6 hours.", Storage.allowanceNote(1800))
+        assertTrue(Storage.cooldownNote(15).startsWith("Tap Stop, and after a cooldown of 15 minutes you can"))
+        assertTrue(Storage.cooldownNote(1).contains("a cooldown of 1 minute you"))
+    }
+
+    @Test
+    fun `picker line - today like the home list, the week in full words`() {
+        assertEquals("Not used in the last 7 days", Storage.pickerUsage(0, 0))
+        assertEquals(Storage.phrases("Not used today", "17 minutes last 7 days"), Storage.pickerUsage(0, 17 * 60_000L))
+        assertEquals(Storage.phrases("22 minutes today", "2 hours 5 minutes last 7 days"),
+            Storage.pickerUsage(22 * 60_000L + 59_000, 125 * 60_000L))
+        assertEquals(Storage.phrases("Less than a minute today", "Less than a minute last 7 days"),
+            Storage.pickerUsage(30_000, 45_000))
+    }
+
+    @Test
     fun `phrases - joined with a dot, each unbreakable`() {
         assertEquals("5\u00A0minutes · 2\u00A0minutes\u00A05\u00A0seconds\u00A0used",
             Storage.phrases("5 minutes", "2 minutes 5 seconds used"))

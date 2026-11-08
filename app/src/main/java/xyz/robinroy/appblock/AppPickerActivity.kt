@@ -126,10 +126,7 @@ class AppPickerActivity : Activity() {
                 row.name.text = app.label
                 row.usage.apply {
                     visibility = if (haveUsage) View.VISIBLE else View.GONE
-                    text = if (app.weekMs == 0L && app.todayMs == 0L)
-                        "Not used in the last 7 days"
-                    else Storage.phrases("${Storage.fmtScreenTime(app.todayMs)} today",
-                        "${Storage.fmtScreenTime(app.weekMs)} last 7 days")
+                    text = Storage.pickerUsage(app.todayMs, app.weekMs)
                 }
                 bindCheck(row, app.pkg in selected, animate = false)
                 return row.root
