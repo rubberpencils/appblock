@@ -349,6 +349,36 @@ class StrictE2eTest {
     }
 
     @Test
+    fun emergencyPass_saysWhenItComesBack() {
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN, pass = Rule(5, 1440))
+        // All 5 minutes used, 22 hours 40 minutes ago: the first comes back in 1 hr 21 min.
+        val start = System.currentTimeMillis() - 1440.min + 80.min
+        Storage.saveStrict(ctx, Storage.loadStrict(ctx).copy(passUses = listOf(start to start + 5.min)))
+
+        openHome()
+        waitFor(By.desc("Strict mode is on")).click()
+        val button = waitFor(text("Emergency pass used up"))
+        assertFalse("a used up pass's button should be greyed out", button.parent.isEnabled)
+        waitFor(textContains("Back in 1 hr 2"))
+
+        // Some of it comes back while the page is open: the button lights up,
+        // and the line says when it's whole.
+        // (2 minutes left: 2 of the 5 still in the day, plus 1 used an hour ago.)
+        val now = System.currentTimeMillis()
+        Storage.saveStrict(ctx, Storage.loadStrict(ctx).copy(passUses = listOf(
+            now - 1440.min - 10.min to now - 1440.min + 2.min, now - 60.min to now - 59.min)))
+        waitFor(textContains("Use emergency pass ·"))
+        assertTrue(button.parent.isEnabled)
+        waitFor(textContains("Full again in 23 hrs"))
+
+        // Open, the pass page says it too.
+        waitFor(textContains("Use emergency pass")).click()
+        waitFor(text("Your blocked apps are open."))
+        waitFor(textContains("Full again in 23 hrs"))
+    }
+
+    @Test
     fun adb_endsStrictMode() {
         freshState()
         strictOn(Storage.WayOut.COOLDOWN, cooldownMin = 99_999)

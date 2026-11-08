@@ -748,6 +748,37 @@ object Storage {
         return remainingMs(usedMs(passLog(s, now), pass.windowMin, now), pass.allowMin)
     }
 
+    /**
+     * With the pass used up, how long until some of it comes back (old use
+     * leaving its window), in whole minutes; 0 while there's time left.
+     */
+    fun passBackInMs(s: Strict, now: Long): Long {
+        val pass = s.pass ?: return 0
+        if (passSavedMs(s, now) > 0) return 0
+        return msUntilUnblocked(passLog(s, now), pass, now)
+    }
+
+    /** How long until the pass is whole again, its last use out of the window; 0 if it's whole now. */
+    fun passFullInMs(s: Strict, now: Long): Long {
+        val pass = s.pass ?: return 0
+        val last = passLog(s, now).maxOfOrNull { it.second } ?: return 0
+        return maxOf(0L, last + pass.windowMin * 60_000L - now)
+    }
+
+    /**
+     * The line under the pass's button saying when its time comes back:
+     * "Back in 1 hr 20 min" used up, "Full again in 2 hrs" partly used;
+     * null when it's whole, there's no pass, or it's counting (then it
+     * keeps moving).
+     */
+    fun passRefillNote(s: Strict, now: Long): String? {
+        if (s.pass == null || passCounting(s)) return null
+        val backIn = passBackInMs(s, now)
+        if (backIn > 0) return "Back in ${fmtSpan(ceilMin(backIn).toInt())}"
+        val full = passFullInMs(s, now)
+        return if (full > 0) "Full again in ${fmtSpan(ceilMin(full).toInt())}" else null
+    }
+
     /** Whether the user opened a pass (and hasn't stopped it, and it hasn't run out). */
     fun passOpen(s: Strict) = s.on && s.passStarted != 0L
 

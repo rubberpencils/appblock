@@ -32,6 +32,8 @@ class StrictActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var phase: Phase? = null
     private var update: () -> Unit = {}
+    /** Keeps the pass's button and its refill line current; set by passButton. */
+    private var passUpdate: () -> Unit = {}
     private var wasOn = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,12 +75,14 @@ class StrictActivity : Activity() {
             build(next, s)
         }
         update()
+        passUpdate()
         handler.removeCallbacks(tick)
         handler.postDelayed(tick, 1000)
     }
 
     private fun build(p: Phase, s: Storage.Strict) {
         update = {}
+        passUpdate = {}
         val page = when (p) {
             Phase.CHOOSE -> choosePage()
             Phase.PLUG -> plugPage()
@@ -264,17 +268,42 @@ class StrictActivity : Activity() {
 
     // ------------------------------------------------------------- the pass
 
-    /** "Use emergency pass" and the time saved, when strict mode has passes; dimmed with none left. */
+    /**
+     * "Use emergency pass" and the time saved, when strict mode has passes,
+     * dimmed with none left; under it, when the used time comes back. Both
+     * follow the pass as old use leaves its window.
+     */
     private fun passButton(): View? {
-        val s = Storage.loadStrict(this)
-        if (s.pass == null) return null
-        val saved = Storage.passSavedMs(s, System.currentTimeMillis())
-        return Ui.Pill(this, "Use emergency pass", Ui.Look.PRIMARY, R.drawable.ic_hourglass) {
+        if (Storage.loadStrict(this).pass == null) return null
+        val pill = Ui.Pill(this, "Use emergency pass", Ui.Look.PRIMARY, R.drawable.ic_hourglass) {
             Strict.startPass(this); tick.run()
-        }.apply {
-            label.text = if (saved > 0) "Use emergency pass · ${Storage.fmtClock(saved)} left" else "Emergency pass used up"
-            isEnabled = saved > 0
         }
+        // Its time counts live: digits of one width, so the label holds still.
+        pill.label.fontFeatureSettings = "tnum"
+        val note = refillNote()
+        passUpdate = {
+            val s = Storage.loadStrict(this)
+            val now = System.currentTimeMillis()
+            val saved = Storage.passSavedMs(s, now)
+            pill.label.text = if (saved > 0) "Use emergency pass · ${Storage.fmtClock(saved)} left" else "Emergency pass used up"
+            // Only on a change: setEnabled fades the button each time it's called.
+            if (pill.isEnabled != saved > 0) pill.isEnabled = saved > 0
+            showNote(note, Storage.passRefillNote(s, now))
+        }
+        passUpdate()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(pill, Ui.lp())
+            addView(note, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
+        }
+    }
+
+    /** The muted line saying when the pass's used time comes back. */
+    private fun refillNote() = Ui.muted(this, "", 13f).apply { gravity = Gravity.CENTER }
+
+    private fun showNote(note: TextView, text: String?) {
+        note.text = text ?: ""
+        note.visibility = if (text == null) View.GONE else View.VISIBLE
     }
 
     private fun passPage() = column().apply {
@@ -292,6 +321,8 @@ class StrictActivity : Activity() {
             "used up here. Done? Stop it and keep the rest. Strict mode stays on either way.", 16f)
             .apply { gravity = Gravity.CENTER }
         addView(centered(ring, 168, chip, title, body), LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
+        val note = refillNote()
+        addView(note, Ui.lp().apply { bottomMargin = Ui.dp(context, 12) })
         val stop = Ui.primaryButton(context, "Stop pass, save the rest") {
             Strict.stopPass(this@StrictActivity); tick.run()
         }
@@ -305,6 +336,7 @@ class StrictActivity : Activity() {
             // Counting only in split screen or a pop-up, with a blocked app beside this page.
             if (Storage.passCounting(s)) setChip(chip, "Pass counting down", R.color.accent_soft, R.color.accent)
             else setChip(chip, "Emergency pass on", R.color.surface_alt, R.color.ink)
+            showNote(note, Storage.passRefillNote(s, System.currentTimeMillis()))
         }
     }
 
