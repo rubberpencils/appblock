@@ -72,7 +72,7 @@ class BlockingE2eTest {
 
         val message = waitFor(wall).text
         // The minute used 10-11 min ago leaves the 2-hr window 109-110 min from now.
-        assertTrue(message, Regex("(?s).*Try again in 1 hr (49|50) min\\..*").matches(message))
+        assertTrue(message, Regex("(?s).*Try again in 1 hour (49|50) minutes\\..*").matches(message))
         waitFor(text("Go to home screen")).click()
         assertTrue(device.wait(Until.gone(wall), E2e.WAIT))
         assertTrue(appears(By.pkg(E2e.homeScreenPackage())))
@@ -196,7 +196,7 @@ class BlockingE2eTest {
         resizePopUp(CLOCK, widthDp = 220, heightDp = 220)
 
         val message = waitFor(shortWall).text
-        assertTrue(message, Regex("Blocked\\.\\s+Try again in 1 hr (49|50) min\\.").matches(message))
+        assertTrue(message, Regex("Blocked\\.\\s+Try again in 1 hour (49|50) minutes\\.").matches(message))
         assertFalse(appears(wall, timeout = 1_000))
         val wallBounds = windowBounds(device.findObject(shortWall))
         val hint = waitFor(text(CLOSE_POP_UP)).visibleBounds

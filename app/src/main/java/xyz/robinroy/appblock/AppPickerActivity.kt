@@ -202,7 +202,7 @@ class AppPickerActivity : Activity() {
             addView(searchField, Ui.lp().apply {
                 marginStart = side; marginEnd = side; topMargin = Ui.dp(context, 16)
             })
-            addView(Ui.muted(context, "New blocks start at 5 min in any 2 hrs. Change it after.", 13f),
+            addView(Ui.muted(context, "New blocks start at 5 minutes in any 2 hours. Change it after.", 13f),
                 Ui.lp().apply { marginStart = side; marginEnd = side; topMargin = Ui.dp(context, 12) })
             addView(sortRow, Ui.lp().apply {
                 marginStart = side; marginEnd = side

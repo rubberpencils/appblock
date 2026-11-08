@@ -35,9 +35,9 @@ class OnboardingE2eTest {
         waitFor(text("A small allowance, on a loop."))
 
         val window = waitFor(By.descContains("ageing out of the last two hours")).visibleBounds
-        val heading = waitFor(text("5 min")).visibleBounds
+        val heading = waitFor(text("5 minutes")).visibleBounds
         assertTrue("the rolling window ($window) isn't on screen", window.width() > 0 && window.height() > 0)
-        assertTrue("the rolling window ($window) isn't under the 5 min heading ($heading)",
+        assertTrue("the rolling window ($window) isn't under the 5 minutes heading ($heading)",
             window.top >= heading.bottom)
     }
 }

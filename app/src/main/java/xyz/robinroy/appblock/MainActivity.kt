@@ -377,7 +377,6 @@ class MainActivity : Activity() {
      */
     private fun appRow(pkg: String, rule: Rule, todayMs: Long?, now: Long, animate: Boolean): View {
         val usedMs = Storage.usedMs(Storage.loadIntervals(this, pkg), rule.windowMin, now)
-        val usedMin = Storage.displayedUsedMin(usedMs, rule.allowMin)
         val allowMs = rule.allowMin * 60_000f
         val fraction = if (allowMs <= 0f) 1f else usedMs / allowMs
         val isSpent = fraction >= 1f
@@ -414,7 +413,7 @@ class MainActivity : Activity() {
                         Ui.lp(Ui.MATCH, Ui.dp(context, 3)).apply { topMargin = Ui.dp(context, 7) })
                     addView(Ui.muted(context,
                         "${Storage.fmtSpan(rule.allowMin)} in any " +
-                            "${Storage.fmtSpan(rule.windowMin)} · $usedMin min used", 12f),
+                            "${Storage.fmtSpan(rule.windowMin)} · ${Storage.fmtUsed(usedMs, rule.allowMin)}", 12f),
                         Ui.lp().apply { topMargin = Ui.dp(context, 5) })
                 }, Ui.lp(0).apply { weight = 1f; marginStart = Ui.dp(context, 12) })
                 addView(Ui.icon(context, R.drawable.ic_chevron, 16, R.color.muted).apply {
@@ -701,9 +700,9 @@ class MainActivity : Activity() {
 
     /**
      * "Allow X in any Y". Each side is a number you can type or nudge with
-     * the minus and plus buttons, plus a unit (min, hr, day) you tap. Quick
+     * the minus and plus buttons, plus a unit (minutes, hours, days) you tap. Quick
      * picks fill both sides at once and light up whenever the fields match
-     * one. One layout covers everything from "1 min in any 15 min" to "6 hrs
+     * one. One layout covers everything from "1 minute in any 15 minutes" to "6 hours
      * in any week", so there is no separate typing mode. OK (enabled only
      * for a valid rule) saves straight away; Remove lives here too.
      */

@@ -16,7 +16,7 @@ import android.widget.TextView
 
 /**
  * One span picker: a label, minus and plus buttons around a number you can
- * type, and the units (min, hr, day) to tap. The limit sheet's "Allow" and
+ * type, and the units (minutes, hours, days) to tap. The limit sheet's "Allow" and
  * "In any" sides, strict mode's cooldown and emergency pass. `changed` runs
  * whenever the number or the unit changes.
  */

@@ -334,10 +334,10 @@ class StrictTest {
         val used = on.copy(passUses = listOf((now - 4 * 60.min - 2.min) to (now - 4 * 60.min)))
         assertEquals(0L, Storage.passBackInMs(used, now))
         assertEquals(20 * 60.min, Storage.passFullInMs(used, now))
-        assertEquals("Full again in 20 hrs", Storage.passRefillNote(used, now))
+        assertEquals("Full again in 20 hours", Storage.passRefillNote(used, now))
         // Its last use is what counts, not its first.
         val twice = used.copy(passUses = used.passUses + ((now - 60.min) to (now - 59.min)))
-        assertEquals("Full again in 23 hrs 1 min", Storage.passRefillNote(twice, now))
+        assertEquals("Full again in 23 hours 1 minute", Storage.passRefillNote(twice, now))
     }
 
     @Test
@@ -347,13 +347,13 @@ class StrictTest {
         val spent = on.copy(passUses = listOf(start to (start + 5.min)))
         assertEquals(0L, Storage.passSavedMs(spent, now))
         assertEquals(80.min + 1.min, Storage.passBackInMs(spent, now))
-        assertEquals("Back in 1 hr 21 min", Storage.passRefillNote(spent, now))
+        assertEquals("Back in 1 hour 21 minutes", Storage.passRefillNote(spent, now))
         assertEquals(85.min, Storage.passFullInMs(spent, now))
         // A minute and a bit later, some is back: then it says when it's full.
         val later = now + 81.min
         assertTrue(Storage.passSavedMs(spent, later) > 0)
         assertEquals(0L, Storage.passBackInMs(spent, later))
-        assertEquals("Full again in 4 min", Storage.passRefillNote(spent, later))
+        assertEquals("Full again in 4 minutes", Storage.passRefillNote(spent, later))
         // And once it's all out of the window, nothing.
         assertEquals(null, Storage.passRefillNote(spent, now + 85.min))
     }
@@ -365,8 +365,8 @@ class StrictTest {
             (now - 10 * 60.min) to (now - 10 * 60.min + 3.min),
             (now - 60.min) to (now - 58.min)))
         assertEquals(0L, Storage.passSavedMs(spent, now))
-        assertEquals("Back in 14 hrs 1 min", Storage.passRefillNote(spent, now))
-        assertEquals("Full again in 9 hrs 1 min", Storage.passRefillNote(spent, now + 14 * 60.min + 1.min))
+        assertEquals("Back in 14 hours 1 minute", Storage.passRefillNote(spent, now))
+        assertEquals("Full again in 9 hours 1 minute", Storage.passRefillNote(spent, now + 14 * 60.min + 1.min))
     }
 
     @Test

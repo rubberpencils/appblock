@@ -9,7 +9,7 @@ import android.view.animation.LinearInterpolator
 
 /**
  * What a rolling window is. The tinted span is the last two hours, pinned
- * between "2 hrs ago" and "now". Stretches of use sit on that timeline,
+ * between "2 hours ago" and "now". Stretches of use sit on that timeline,
  * each labelled with its minutes, and age left. Inside the span they
  * count; once one crosses the back edge it lifts, turns green, and hands
  * its minutes back. The same three repeat, and a full turn lands on its
@@ -95,7 +95,7 @@ class RollingWindow(context: Context) : View(context) {
         canvas.drawLine(18f * density, axis, width - 18f * density, axis, mark)
 
         // Three stretches of use. age 0 is born at "now"; age 1 has just
-        // crossed "2 hrs ago". Offsets are far enough apart that only one
+        // crossed "2 hours ago". Offsets are far enough apart that only one
         // is ever leaving.
         val bornAt = floatArrayOf(0.06f, 0.40f, 0.72f)
         val mins = intArrayOf(2, 3, 1)
@@ -161,7 +161,7 @@ class RollingWindow(context: Context) : View(context) {
         val base = washBot + 18f * density
         caption.alpha = 190
         caption.textAlign = Paint.Align.LEFT
-        canvas.drawText("2 hrs ago", leftEdge, base, caption)
+        canvas.drawText("2 hours ago", leftEdge, base, caption)
         caption.textAlign = Paint.Align.RIGHT
         canvas.drawText("now", rightEdge, base, caption)
     }
