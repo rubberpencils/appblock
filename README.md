@@ -24,7 +24,9 @@ one whose time is up. It only looks at which app each window belongs to, never a
 what's inside, except for YouTube's Shorts player or Instagram's Reels player (by
 its view id, no text) when they're blocked. Besides switching it on in Settings > Accessibility, it needs a
 battery exemption so the phone doesn't put it to sleep. Usage access is optional,
-for screen-time numbers. While a limited app is on screen, a notification counts
+for screen time: the home screen shows each day's, across the day, from a history
+AppBlock keeps on the phone (copied from Android's usage events, which Android
+itself drops after a week or so; left out of backups). While a limited app is on screen, a notification counts
 down its time (with 50%/90% warnings); two limited apps side by side get one each.
 
 Installing the APK from GitHub on Android 13 or later? Android greys out the

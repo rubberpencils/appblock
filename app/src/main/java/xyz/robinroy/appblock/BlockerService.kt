@@ -125,6 +125,20 @@ class BlockerService : AccessibilityService() {
         })
         Log.i(TAG, "connected")
         refresh()
+        handler.postDelayed(historySync, 60_000L)
+    }
+
+    /**
+     * Screen time's history (History) copied from Android's usage events
+     * hourly, before Android drops them; it runs on History's own thread.
+     * Nothing to do with blocking. shutDown's removeCallbacksAndMessages
+     * stops it with everything else.
+     */
+    private val historySync: Runnable = object : Runnable {
+        override fun run() {
+            History.syncIfDue(this@BlockerService, History.SERVICE_SYNC_MS)
+            handler.postDelayed(this, History.SERVICE_SYNC_MS)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {

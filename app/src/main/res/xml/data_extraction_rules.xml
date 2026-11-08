@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Auto Backup on Android 12+, to the Google account and phone to phone:
-     everything except strict mode's file and the clock's (see backup_rules.xml). -->
+     everything except strict mode's file, the clock's and the screen-time history (see backup_rules.xml). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="strict.xml" />
         <exclude domain="sharedpref" path="clock.xml" />
+        <exclude domain="database" path="history.db" />
+        <exclude domain="database" path="history.db-journal" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="strict.xml" />
         <exclude domain="sharedpref" path="clock.xml" />
+        <exclude domain="database" path="history.db" />
+        <exclude domain="database" path="history.db-journal" />
     </device-transfer>
 </data-extraction-rules>
