@@ -293,6 +293,22 @@ object E2e {
             ?: throw AssertionError("not on screen after ${timeout}ms: $selector")
 
     /**
+     * Like waitFor, but looks at the screen afresh each time: UI Automator
+     * keeps a cache of what's on screen, and late in a long run it can miss
+     * a text that changed in place (the screen shows the new one, the cache
+     * the old). For text that changes after something loads.
+     */
+    fun waitForFresh(selector: BySelector, timeout: Long = WAIT): UiObject2 {
+        val until = System.currentTimeMillis() + timeout
+        while (true) {
+            if (android.os.Build.VERSION.SDK_INT >= 34) uiAutomation.clearCache()
+            device.findObject(selector)?.let { return it }
+            if (System.currentTimeMillis() > until) throw AssertionError("not on screen after ${timeout}ms: $selector")
+            Thread.sleep(250)
+        }
+    }
+
+    /**
      * The object once it has stopped moving: a sheet's buttons slide up with
      * it, and a tap found mid-slide lands where the button was, maybe on the
      * dimmed page around the sheet, which closes it.

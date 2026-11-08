@@ -68,24 +68,24 @@ class UsageE2eTest {
     fun card_stepsThroughTheDays() {
         seed()
         openHome()
-        waitFor(text("Today"))
+        E2e.waitForFresh(text("Today"))
         assertFalse("there's no tomorrow", waitFor(By.desc("Next day")).isEnabled)
 
         waitFor(By.desc("Previous day")).click()
-        waitFor(text("Yesterday"))
-        waitFor(text("55 minutes"))
-        waitFor(text("40 minutes"))   // limited apps: Clock
-        waitFor(text("Busiest hour: 9 PM, 40 minutes"))
+        E2e.waitForFresh(text("Yesterday"))
+        E2e.waitForFresh(text("55 minutes"))
+        E2e.waitForFresh(text("40 minutes"))   // limited apps: Clock
+        E2e.waitForFresh(text("Busiest hour: 9 PM, 40 minutes"))
 
         waitFor(By.desc("Previous day")).click()
-        waitFor(text(Storage.dayTitle(today.minusDays(2), today)))
-        waitFor(text("5 minutes"))
+        E2e.waitForFresh(text(Storage.dayTitle(today.minusDays(2), today)))
+        E2e.waitForFresh(text("5 minutes"))
         // The history starts here: no further back.
         assertTrue(E2e.eventually { !device.findObject(By.desc("Previous day")).isEnabled })
 
         waitFor(By.desc("Next day")).click()
         waitFor(By.desc("Next day")).click()
-        waitFor(text("Today"))
+        E2e.waitForFresh(text("Today"))
     }
 
     @Test
@@ -112,17 +112,19 @@ class UsageE2eTest {
         openHome()
         assertFalse(appears(text("Screen time"), timeout = 1_000))
 
-        // Tapping it opens the usage access settings.
+        // Tapping it opens the usage access settings; Back comes back to it.
         waitFor(textContains("Allow usage access")).click()
         assertTrue("usage access settings didn't open", appears(By.pkg("com.android.settings")))
-        openHome()
+        device.pressBack()
+        waitFor(textContains("Allow usage access"))
 
         // Hidden: it says where to turn it on again, and stays hidden.
         waitFor(By.desc("Hide this hint")).click()
         waitFor(textContains("tap ⓘ"))
         E2e.waitStill(text("Yes, hide it")).click()
+        // (The app's own record, waited for: UI Automator can lose sight of the sheet's window and miss it closing.)
+        assertTrue("hiding wasn't saved", E2e.eventually { Storage.usageCardDismissed(ctx) })
         assertTrue("the sheet didn't close", device.wait(Until.gone(text("Hide screen time?")), E2e.WAIT))
-        assertTrue(Storage.usageCardDismissed(ctx))
         assertTrue(E2e.eventually { device.findObject(textContains("Allow usage access")) == null })
         openHome()
         assertFalse(appears(textContains("Allow usage access"), timeout = 2_000))
