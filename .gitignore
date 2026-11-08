@@ -23,3 +23,4 @@ rules-signing-key.pem
 
 # Launch trailer work: movie clips and renders (scripts in trailer/src)
 trailer/
+.gitpush.sh
