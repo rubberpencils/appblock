@@ -387,8 +387,7 @@ class MainActivity : Activity() {
             Ui.txt(this, "Blocked, back in ${Storage.fmtSpan(waitMin.toInt())}", 13f, R.color.danger,
                 medium = true)
         } else if (todayMs != null) Ui.muted(this, Storage.fmtToday(todayMs), 13f)
-        else Ui.muted(this, Storage.fmtSpan(Storage.ceilMin(
-            Storage.remainingMs(usedMs, rule.allowMin)).toInt()) + " left", 13f)
+        else Ui.muted(this, Storage.fmtLeft(usedMs, rule.allowMin), 13f)
 
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -411,9 +410,9 @@ class MainActivity : Activity() {
                     addView(status, Ui.lp().apply { topMargin = Ui.dp(context, 2) })
                     addView(Ui.progressBar(context, fraction, animate),
                         Ui.lp(Ui.MATCH, Ui.dp(context, 3)).apply { topMargin = Ui.dp(context, 7) })
-                    addView(Ui.muted(context,
-                        "${Storage.fmtSpan(rule.allowMin)} in any " +
-                            "${Storage.fmtSpan(rule.windowMin)} · ${Storage.fmtUsed(usedMs, rule.allowMin)}", 12f),
+                    addView(Ui.muted(context, Storage.phrases(
+                        "${Storage.fmtSpan(rule.allowMin)} in any ${Storage.fmtSpan(rule.windowMin)}",
+                        Storage.fmtUsed(usedMs, rule.allowMin)), 12f),
                         Ui.lp().apply { topMargin = Ui.dp(context, 5) })
                 }, Ui.lp(0).apply { weight = 1f; marginStart = Ui.dp(context, 12) })
                 addView(Ui.icon(context, R.drawable.ic_chevron, 16, R.color.muted).apply {

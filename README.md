@@ -4,8 +4,8 @@
 | ---------------------------------------- | ------------------------------------- |
 
 Pick apps and give each a budget: **allow X in any rolling Y**, in minutes, hours or
-days (say, 10 min in any 2 hrs). When the budget is spent, opening the app puts a
-"blocked, try again in N min" wall over it.
+days (say, 10 minutes in any 2 hours). When the budget is spent, opening the app puts a
+"blocked, try again in N minutes" wall over it.
 
 It can also block YouTube's Shorts and Instagram's Reels outright, even with time
 left: switch on "Block YouTube Shorts" under YouTube, or "Block Instagram Reels"
@@ -62,7 +62,7 @@ While it's on:
   permission controller. The rest of Settings (Wi-Fi, Bluetooth...) stays usable.
 - Limits only get stricter: lowering an allowance or adding an app works; raising
   one, removing an app or unblocking Shorts waits until strict mode is off.
-- Optional **emergency passes** ("5 min in any day", say) open your blocked apps
+- Optional **emergency passes** ("5 minutes in any day", say) open your blocked apps
   without ending strict mode. A pass only counts down while you're in an app it
   opened (a spent app, or Shorts or Reels), so time spent anywhere else isn't
   wasted. Stop it to save what's left.

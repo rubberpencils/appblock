@@ -372,15 +372,6 @@ object Storage {
     // Usage-warning thresholds, as percent of the allowance.
     private val WARN_THRESHOLDS = listOf(50, 90)
 
-    /**
-     * Minutes for the countdown's warning text, one decimal, truncated ("2.5",
-     * "3") so it never contradicts the (also truncated) percent beside it.
-     */
-    fun fmtMin(ms: Long): String {
-        val tenths = ms / 6_000
-        return if (tenths % 10 == 0L) "${tenths / 10}" else "${tenths / 10}.${tenths % 10}"
-    }
-
     /** What the home screen's list area shows. */
     enum class HomeList { CARDS, EMPTY_HINT, PAUSED_NOTE }
 
@@ -397,16 +388,6 @@ object Storage {
         else -> HomeList.PAUSED_NOTE
     }
 
-    /** Screen-time durations for the app picker: "0m", "45m", "2h", "2h 12m". */
-    fun fmtDuration(ms: Long): String {
-        val h = ms / 3_600_000
-        val m = ms / 60_000 % 60
-        return when {
-            h == 0L -> "${m}m"
-            m == 0L -> "${h}h"
-            else -> "${h}h ${m}m"
-        }
-    }
 
     /** Percent of the allowance used, for display, capped at 100. */
     fun usedPct(usedMs: Long, allowMin: Int): Int =
@@ -468,6 +449,12 @@ object Storage {
         missing.joinToString("\n\n") { "${it.title}: ${it.why}" } +
             "\n\nThe checklist on the home screen will get you set up."
 
+    /**
+     * Phrases joined with " · ", each kept on one line: a line that's too
+     * long breaks between them, never inside one ("12 minutes / 34 seconds").
+     */
+    fun phrases(vararg parts: String): String = parts.joinToString(" · ") { it.replace(' ', '\u00A0') }
+
     /** "1 minute", "5 minutes": a count and its unit, in full words. */
     private fun count(n: Long, unit: String) = if (n == 1L) "1 $unit" else "$n ${unit}s"
 
@@ -488,13 +475,15 @@ object Storage {
     }
 
     /**
-     * Time used, exactly, to the second (cut, never rounded): "45 seconds",
-     * "1 minute 23 seconds", "1 hour 2 minutes 3 seconds", "0 seconds".
+     * Time, exactly, to the second (cut, never rounded): "45 seconds",
+     * "1 minute 23 seconds", "1 hour 2 minutes 3 seconds", "1 day 2 hours",
+     * "0 seconds".
      */
     fun fmtExact(ms: Long): String {
         val total = maxOf(0L, ms) / 1000
         val parts = listOfNotNull(
-            (total / 3600).takeIf { it > 0 }?.let { count(it, "hour") },
+            (total / 86_400).takeIf { it > 0 }?.let { count(it, "day") },
+            (total / 3600 % 24).takeIf { it > 0 }?.let { count(it, "hour") },
             (total / 60 % 60).takeIf { it > 0 }?.let { count(it, "minute") },
             (total % 60).takeIf { it > 0 }?.let { count(it, "second") })
         return if (parts.isEmpty()) "0 seconds" else parts.joinToString(" ")
@@ -588,6 +577,13 @@ object Storage {
      */
     fun fmtUsed(usedMs: Long, allowMin: Int): String =
         fmtExact(minOf(usedMs, allowMin * 60_000L)) + " used"
+
+    /**
+     * "2 minutes 55 seconds left": exact, the partial second counted (so it
+     * and the time used, cut, always add up to the allowance).
+     */
+    fun fmtLeft(usedMs: Long, allowMin: Int): String =
+        fmtExact(remainingMs(usedMs, allowMin) + 999) + " left"
 
     // ---- the clock: everything time-stamped moves with it ----
     //
@@ -1151,15 +1147,17 @@ object Storage {
             if (day.year == today.year) "EEE, d MMM" else "EEE, d MMM yyyy", java.util.Locale.ENGLISH))
     }
 
-    /** Screen time in words: "2 hours 5 minutes", "45 minutes", "Under 1 minute", "0 minutes". */
+    /**
+     * Screen time in words, to the minute (cut: never more than was used):
+     * "2 hours 5 minutes", "45 minutes", "Less than a minute", "0 minutes".
+     * The screen-time card, the Usage page and the app picker.
+     */
     fun fmtScreenTime(ms: Long): String {
         if (ms <= 0) return "0 minutes"
-        if (ms < 60_000) return "Under 1 minute"
-        val min = ms / 60_000   // rounded down: never more than was used
-        fun unit(n: Long, one: String) = if (n == 1L) "1 $one" else "$n ${one}s"
-        val h = min / 60
-        val m = min % 60
-        return listOfNotNull(if (h > 0) unit(h, "hour") else null, if (m > 0) unit(m, "minute") else null).joinToString(" ")
+        if (ms < 60_000) return "Less than a minute"
+        val min = ms / 60_000
+        return listOfNotNull((min / 60).takeIf { it > 0 }?.let { count(it, "hour") },
+            (min % 60).takeIf { it > 0 }?.let { count(it, "minute") }).joinToString(" ")
     }
 
     /** "9 PM" for the hour starting at `start`. */

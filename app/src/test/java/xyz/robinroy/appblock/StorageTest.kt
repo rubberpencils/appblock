@@ -117,12 +117,28 @@ class StorageTest {
     }
 
     @Test
-    fun `warning minutes - one truncated decimal, matching the percent`() {
-        assertEquals("2.5", Storage.fmtMin(150_000))   // 50% of 5 min
-        assertEquals("2.5", Storage.fmtMin(155_999))   // truncates, like the pct
-        assertEquals("2.6", Storage.fmtMin(156_000))
-        assertEquals("3", Storage.fmtMin(3.min))       // whole -> no decimal
-        assertEquals("0", Storage.fmtMin(0))
+    fun `exact time - to the second, cut, with days`() {
+        assertEquals("2 minutes 30 seconds", Storage.fmtExact(150_000))   // 50% of 5 minutes
+        assertEquals("2 minutes 35 seconds", Storage.fmtExact(155_999))   // cut, like the percent
+        assertEquals("3 minutes", Storage.fmtExact(3.min))
+        assertEquals("0 seconds", Storage.fmtExact(0))
+        assertEquals("0 seconds", Storage.fmtExact(-5_000))
+        assertEquals("1 day 1 hour 3 minutes", Storage.fmtExact(1503.min))
+    }
+
+    @Test
+    fun `phrases - joined with a dot, each unbreakable`() {
+        assertEquals("5\u00A0minutes · 2\u00A0minutes\u00A05\u00A0seconds\u00A0used",
+            Storage.phrases("5 minutes", "2 minutes 5 seconds used"))
+        assertEquals("one", Storage.phrases("one"))
+    }
+
+    @Test
+    fun `time left - exact, the partial second counted, adds up with time used`() {
+        assertEquals("5 minutes left", Storage.fmtLeft(0, 5))
+        assertEquals("2 minutes 55 seconds left", Storage.fmtLeft(125_400, 5))   // 2:54.6 left, the part second counted
+        assertEquals("2 minutes 5 seconds used", Storage.fmtUsed(125_400, 5))
+        assertEquals("0 seconds left", Storage.fmtLeft(9.min, 5))
     }
 
     @Test
@@ -398,14 +414,14 @@ class StorageTest {
     }
 
     @Test
-    fun `picker durations - minutes, whole hours, mixed`() {
-        assertEquals("0m", Storage.fmtDuration(0))
-        assertEquals("0m", Storage.fmtDuration(59_999))
-        assertEquals("1m", Storage.fmtDuration(60_000))
-        assertEquals("45m", Storage.fmtDuration(45.min))
-        assertEquals("1h", Storage.fmtDuration(60.min))
-        assertEquals("1h 1m", Storage.fmtDuration(61.min))
-        assertEquals("2h 12m", Storage.fmtDuration(132.min + 30_000))
+    fun `picker durations - in full words, cut to the minute`() {
+        assertEquals("0 minutes", Storage.fmtScreenTime(0))
+        assertEquals("Less than a minute", Storage.fmtScreenTime(59_999))
+        assertEquals("1 minute", Storage.fmtScreenTime(60_000))
+        assertEquals("45 minutes", Storage.fmtScreenTime(45.min))
+        assertEquals("1 hour", Storage.fmtScreenTime(60.min))
+        assertEquals("1 hour 1 minute", Storage.fmtScreenTime(61.min))
+        assertEquals("2 hours 12 minutes", Storage.fmtScreenTime(132.min + 30_000))
     }
 
     @Test

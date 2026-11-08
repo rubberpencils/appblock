@@ -63,23 +63,24 @@ class SpanPicker(private val context: Context, label: String, private val units:
                 marginStart = Ui.dp(context, 6); marginEnd = Ui.dp(context, 6)
             })
             addView(Ui.iconButton(context, R.drawable.ic_plus, "$label: more", 40) { step(true) })
-            addView(View(context), Ui.lp(0, 0).apply { weight = 1f })
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                background = Ui.shape(context, R.color.surface_alt, 14f)
-                val p = Ui.dp(context, 3)
-                setPadding(p, p, p, p)
-                for (u in units) {
-                    val seg = Ui.txt(context, u.label, 14f, R.color.muted, medium = true).apply {
-                        gravity = Gravity.CENTER
-                        setPadding(Ui.dp(context, 11), Ui.dp(context, 8), Ui.dp(context, 11), Ui.dp(context, 8))
-                        isClickable = true
-                        setOnClickListener { unit = u; paintUnits(); changed() }
-                    }
-                    segments[u] = seg
-                    addView(seg)
+        }, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
+        // The units on a row of their own: in full words they don't fit beside the number.
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = Ui.shape(context, R.color.surface_alt, 14f)
+            val p = Ui.dp(context, 3)
+            setPadding(p, p, p, p)
+            for (u in units) {
+                val seg = Ui.txt(context, u.label, 14f, R.color.muted, medium = true).apply {
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    setPadding(Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 8), Ui.dp(context, 8))
+                    isClickable = true
+                    setOnClickListener { unit = u; paintUnits(); changed() }
                 }
-            })
+                segments[u] = seg
+                addView(seg, Ui.lp(0).apply { weight = 1f })
+            }
         }, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
     }
 
