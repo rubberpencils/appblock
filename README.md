@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/icon.png" alt="AppBlock's icon" width="96">
+</p>
+
 <h1 align="center">AppBlock</h1>
 
 <p align="center">
@@ -54,6 +58,22 @@
 </table>
 
 <hr>
+
+<h3 align="center">What's a rolling window?</h3>
+
+<p align="center">
+  <img src="public/rolling-window.gif" alt="5 minutes in any 2 hours: used minutes slide out of the window and come back" width="420">
+</p>
+
+<p align="center">
+  A limit like 5 minutes in any 2 hours is a window that keeps moving.
+  <br>
+  As old use slides out the back, those minutes come back, so there's no midnight reset to burn through in one sitting.
+</p>
+
+<hr>
+
+<h3 align="center">Why I made it</h3>
 
 <p align="center">
   One morning I woke up at 5am and scrolled Instagram, X and YouTube for an hour straight.
