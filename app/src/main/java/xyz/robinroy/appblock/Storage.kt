@@ -1240,10 +1240,14 @@ object Storage {
         return listOf(capMin)
     }
 
-    /** A slice of the day: "9:15 to 9:30 PM", or "11:45 AM to 12:00 PM" across noon. */
-    fun sliceRange(start: Long, end: Long, zone: java.time.ZoneId): String {
+    /**
+     * A slice of the day: "9:15 to 9:30 PM", or "11:45 AM to 12:00 PM" across
+     * noon; the one going on now, "11:15 PM to now".
+     */
+    fun sliceRange(start: Long, end: Long, zone: java.time.ZoneId, ongoing: Boolean = false): String {
         val f = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH)
         val a = java.time.Instant.ofEpochMilli(start).atZone(zone).format(f)
+        if (ongoing) return "$a to now"
         val b = java.time.Instant.ofEpochMilli(end).atZone(zone).format(f)
         return if (a.takeLast(2) == b.takeLast(2)) "${a.dropLast(3)} to $b" else "$a to $b"
     }

@@ -95,7 +95,7 @@ object Readout {
         private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
         private val rect = RectF()
 
-        /** Drawn at the top, centred on `x` but kept inside 0..`maxX`. Rows: a series color (or null) and its text. */
+        /** Drawn at the top, beside `x` (right of it if it fits, else left), inside 0..`maxX`. Rows: a series color (or null) and its text. */
         fun draw(canvas: Canvas, x: Float, maxX: Float, heading: String, rows: List<Pair<Int?, String>>) {
             val pad = Ui.dpf(context, 8f)
             val dotW = Ui.dpf(context, 12f)
@@ -104,7 +104,9 @@ object Readout {
             for ((c, t) in rows) w = maxOf(w, value.measureText(t) + if (c != null) dotW else 0f)
             w += 2 * pad
             val h = pad * 2 + lineH * (1 + rows.size) - Ui.dpf(context, 2f)
-            val left = (x - w / 2).coerceIn(0f, maxOf(0f, maxX - w))
+            // Beside the mark, not over it: the point being read stays in view.
+            val gap = Ui.dpf(context, 8f)
+            val left = (if (x + gap + w <= maxX) x + gap else x - gap - w).coerceIn(0f, maxOf(0f, maxX - w))
             rect.set(left, 0f, left + w, h)
             val r = Ui.dpf(context, 10f)
             canvas.drawRoundRect(rect, r, r, back)

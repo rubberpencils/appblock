@@ -111,7 +111,8 @@ class UsageChartView(context: Context) : View(context) {
         Readout.showing(parent as? View ?: this) { unpick() }
     }
 
-    private fun unpick() {
+    /** The pick taken away: a new day, the calendar opening. */
+    fun unpick() {
         if (picked == null) return
         picked = null
         Readout.hidden(parent as? View ?: this)
@@ -135,15 +136,18 @@ class UsageChartView(context: Context) : View(context) {
         val plotH = bottom - top
         // The minute marks: from the day's busiest slice, in minutes.
         val bucketMin = (bucketMs / 60_000L).toInt().coerceAtLeast(1)
+        // Each slice's minutes on screen: the one going on now, its minutes so far.
+        val limMin = FloatArray(n) { sliceMs(limited[it], it) / 60_000f }
+        val othMin = FloatArray(n) { sliceMs(other[it], it) / 60_000f }
         var peak = 0f
-        for (i in 0 until known.coerceAtMost(n)) peak = maxOf(peak, limited[i], other[i])
-        val ticks = Storage.niceTicks(peak * bucketMin, bucketMin)
+        for (i in 0 until known.coerceAtMost(n)) peak = maxOf(peak, limMin[i], othMin[i])
+        val ticks = Storage.niceTicks(peak, bucketMin)
         val gutter = label.measureText(Storage.fmtTick(bucketMin)) + Ui.dpf(context, 8f)
         val w = width - gutter
         plotW = w
         fun x(t: Long) = (t - from).toFloat() / (to - from) * w
         val scaleMin = (ticks.lastOrNull() ?: bucketMin).toFloat()
-        fun y(share: Float) = bottom - share * bucketMin / scaleMin * plotH
+        fun y(minutes: Float) = bottom - minutes / scaleMin * plotH
         for (m in ticks) {
             val gy = bottom - m / scaleMin * plotH
             canvas.drawLine(0f, gy, w, gy, grid)
@@ -185,8 +189,8 @@ class UsageChartView(context: Context) : View(context) {
             canvas.drawPath(path, fillPaint)
             canvas.drawPath(topEdge, line)
         }
-        series(other, otherFill, otherLine)
-        series(limited, limitedFill, limitedLine)
+        series(othMin, otherFill, otherLine)
+        series(limMin, limitedFill, limitedLine)
 
         // The slice picked: a line through it, a dot on each series, and its exact values.
         val i = picked ?: return
@@ -196,17 +200,18 @@ class UsageChartView(context: Context) : View(context) {
         val px = x(minOf(to, start + bucketMs / 2))
         canvas.drawLine(px, top, px, bottom, marker)
         val rows = mutableListOf<Pair<Int?, String>>()
-        fun mark(values: FloatArray, color: Int, name: String) {
+        fun mark(values: FloatArray, minutes: FloatArray, color: Int, name: String) {
             dot.color = context.getColor(color)
-            canvas.drawCircle(px, y(values[i]), Ui.dpf(context, 5f), ring)
-            canvas.drawCircle(px, y(values[i]), Ui.dpf(context, 3.5f), dot)
+            canvas.drawCircle(px, y(minutes[i]), Ui.dpf(context, 5f), ring)
+            canvas.drawCircle(px, y(minutes[i]), Ui.dpf(context, 3.5f), dot)
             val text = Storage.fmtExact(sliceMs(values[i], i))
             rows += if (single) (null to text) else (color to "$name: $text")
         }
-        if (single) mark(limited, R.color.accent, "")
-        else { mark(limited, R.color.accent, "Limited apps"); mark(other, R.color.chart_other_line, "Other apps") }
-        bubble.draw(canvas, px, w, Storage.sliceRange(start, end, zone), rows)
-        contentDescription = "${Storage.sliceRange(start, end, zone)}: " + rows.joinToString(", ") { it.second }
+        if (single) mark(limited, limMin, R.color.accent, "")
+        else { mark(limited, limMin, R.color.accent, "Limited apps"); mark(other, othMin, R.color.chart_other_line, "Other apps") }
+        val range = Storage.sliceRange(start, end, zone, ongoing = start + bucketMs > upTo && upTo < to)
+        bubble.draw(canvas, px, w, range, rows)
+        contentDescription = "$range: " + rows.joinToString(", ") { it.second }
     }
 
     private val topEdge = Path()

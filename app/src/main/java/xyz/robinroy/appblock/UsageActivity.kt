@@ -28,6 +28,7 @@ class UsageActivity : Activity() {
     private lateinit var head: ScreenTimeView
     private lateinit var list: LinearLayout
     private lateinit var chips: Map<Storage.UsageSort, TextView>
+    private lateinit var scroll: ScrollView
     private var started = false
     private var shown: History.Day? = null
     private var query = ""
@@ -66,10 +67,11 @@ class UsageActivity : Activity() {
             }, Ui.lp().apply { topMargin = Ui.dp(context, 12) })
             addView(list, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
         }
-        setContentView(ScrollView(this).apply {
+        scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             addView(page)
-        })
+        }
+        setContentView(scroll)
         paintChips()
     }
 
@@ -95,8 +97,9 @@ class UsageActivity : Activity() {
         val ignored = Storage.screenTimeIgnored(this)
         val used = totals.map { (pkg, ms) -> Storage.AppUse(pkg, labelFor(pkg), ms) }
         val (counted, notCounted) = used.partition { it.pkg !in ignored }
-        // Bars against the top app that counts (the ones that don't stop at full).
-        val top = ((counted.maxOfOrNull { it.ms } ?: used.maxOfOrNull { it.ms }) ?: 1L).toFloat()
+        // Bars against the top app in each part: what counts, and what doesn't.
+        val top = (counted.maxOfOrNull { it.ms } ?: 1L).toFloat()
+        val topNotCounted = (notCounted.maxOfOrNull { it.ms } ?: 1L).toFloat()
         val found = { a: Storage.AppUse -> Storage.matches(a.label, query) }
         val countedShown = Storage.sortApps(counted.filter(found), sort, descending)
         val notCountedShown = Storage.sortApps(notCounted.filter(found), sort, descending)
@@ -105,7 +108,7 @@ class UsageActivity : Activity() {
         if (notCountedShown.isNotEmpty()) {
             list.addView(Ui.eyebrow(this, "Not counted"), Ui.lp().apply { topMargin = gap })
             list.addView(Ui.muted(this, "Left out of your screen time.", 13f), Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 4) })
-            for (a in notCountedShown) list.addView(appRow(a, a.ms / top, a.pkg in limited, d.day, counts = false))
+            for (a in notCountedShown) list.addView(appRow(a, a.ms / topNotCounted, a.pkg in limited, d.day, counts = false))
         }
 
         // Last, on request: the installed apps with nothing logged that day.
@@ -147,7 +150,10 @@ class UsageActivity : Activity() {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(Ui.title(context, a.label, 15f).apply { maxLines = 1 }, Ui.lp(0).apply { weight = 1f })
+                addView(Ui.title(context, a.label, 15f).apply {
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                }, Ui.lp(0).apply { weight = 1f })
                 addView(Ui.txt(context, time, 13f, R.color.muted).apply {
                     setPadding(Ui.dp(context, 10), 0, 0, 0)
                 })
@@ -181,6 +187,9 @@ class UsageActivity : Activity() {
             maxLines = 1
             background = null
             setPadding(Ui.dp(context, 10), Ui.dp(context, 14), Ui.dp(context, 14), Ui.dp(context, 14))
+            // Typing: the box goes to the top, so the results show above the keyboard.
+            setOnFocusChangeListener { v, has -> if (has) bringSearchUp(v) }
+            setOnClickListener { bringSearchUp(it) }
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable) { query = s.toString(); showApps() }
                 override fun beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
@@ -197,13 +206,23 @@ class UsageActivity : Activity() {
         }
     }
 
+    private fun bringSearchUp(box: View) {
+        val field = box.parent as? View ?: return
+        // Room below to scroll that far, however short the list.
+        list.minimumHeight = scroll.height
+        scroll.post { scroll.smoothScrollTo(0, field.top - Ui.dp(this, 12)) }
+    }
+
     /** A sort chip: tap to sort by it, tap again to flip. Time starts most first, name from A. */
     private fun chip(label: String, key: Storage.UsageSort) = TextView(this).apply {
         text = label
         tag = label
         textSize = 13f
         typeface = Ui.sans(context, medium = true)
+        gravity = android.view.Gravity.CENTER
         setPadding(Ui.dp(context, 14), Ui.dp(context, 8), Ui.dp(context, 14), Ui.dp(context, 8))
+        // As wide as with its arrow, so it doesn't change width as the arrow comes and goes.
+        minWidth = (paint.measureText("$label \u2193") + Ui.dp(context, 28)).toInt()
         layoutParams = LinearLayout.LayoutParams(Ui.WRAP, Ui.WRAP).apply { marginEnd = Ui.dp(context, 8) }
         Ui.press(this, 0.95f)
         setOnClickListener {

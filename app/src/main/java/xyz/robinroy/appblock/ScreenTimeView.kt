@@ -44,6 +44,7 @@ class ScreenTimeView(
         setPadding(Ui.dp(activity, 12), Ui.dp(activity, 10), Ui.dp(activity, 12), Ui.dp(activity, 10))
         Ui.press(this, 0.95f)
         setOnClickListener {
+            chart.unpick()
             DayPicker.show(activity, day, firstDay, LocalDate.now(zone)) { picked -> go(picked) }
         }
     }
@@ -60,7 +61,10 @@ class ScreenTimeView(
         addView(LinearLayout(activity).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(Ui.eyebrow(activity, "Screen time"), Ui.lp(0).apply { weight = 1f })
+            addView(Ui.eyebrow(activity, "Screen time").apply {
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, Ui.lp(0).apply { weight = 1f })
             addView(prev, LayoutParams(Ui.dp(activity, 36), Ui.dp(activity, 36)))
             addView(dayTitle, Ui.lp(Ui.WRAP).apply {
                 marginStart = Ui.dp(activity, 6); marginEnd = Ui.dp(activity, 6)
@@ -125,7 +129,8 @@ class ScreenTimeView(
         otherLegend.second.text = Storage.fmtScreenTime(all - lim)
         val p = Storage.peakHour(sessions, d.day, zone)
         peak.text = when {
-            p != null -> "Busiest hour: ${Storage.fmtHour(p.start, zone)}, ${Storage.fmtScreenTime(p.ms)}"
+            p != null -> "Busiest hour: ${Storage.fmtHour(p.start, zone)}, " +
+                Storage.fmtScreenTime(p.ms).replaceFirstChar { it.lowercase() }
             only != null -> if (d.day == today) "Not used yet today." else "Not used on this day."
             else -> if (d.day == today) "Nothing yet today." else "Nothing on this day."
         }

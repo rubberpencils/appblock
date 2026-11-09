@@ -593,5 +593,7 @@ class ScreenTimeTest {
         assertEquals("11:45 AM to 12:00 PM", Storage.sliceRange(at(11, 45), at(12, 0), zone))
         assertEquals("11:45 PM to 12:00 AM", Storage.sliceRange(at(23, 45), at(23, 45) + 15.min, zone))
         assertEquals("12:00 to 12:15 AM", Storage.sliceRange(at(0, 0), at(0, 15), zone))
+        // The slice going on now.
+        assertEquals("11:15 PM to now", Storage.sliceRange(at(23, 15), at(23, 15), zone, ongoing = true))
     }
 }
