@@ -360,7 +360,7 @@ class StrictE2eTest {
         waitFor(By.desc("Strict mode is on")).click()
         val button = waitFor(text("Emergency pass used up"))
         assertFalse("a used up pass's button should be greyed out", button.parent.isEnabled)
-        waitFor(textContains("Back in 1 hr 2"))
+        waitFor(textContains("Back in 1 hour 2"))
 
         // Some of it comes back while the page is open: the button lights up,
         // and the line says when it's whole.
@@ -370,12 +370,12 @@ class StrictE2eTest {
             now - 1440.min - 10.min to now - 1440.min + 2.min, now - 60.min to now - 59.min)))
         waitFor(textContains("Use emergency pass ·"))
         assertTrue(button.parent.isEnabled)
-        waitFor(textContains("Full again in 23 hrs"))
+        waitFor(textContains("Full again in 23 hours"))
 
         // Open, the pass page says it too.
         waitFor(textContains("Use emergency pass")).click()
         waitFor(text("Your blocked apps are open."))
-        waitFor(textContains("Full again in 23 hrs"))
+        waitFor(textContains("Full again in 23 hours"))
     }
 
     @Test

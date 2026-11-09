@@ -460,9 +460,9 @@ class BlockerService : AccessibilityService() {
      * chronometer.
      */
     private fun timerNotification(pkg: String, rule: Rule, usedMs: Long, deadline: Long, level: Int): Notification {
-        val text = if (level == 0) "Allowance for the next ${Storage.fmtSpan(rule.windowMin)} window."
+        val text = if (level == 0) Storage.allowanceNote(rule.windowMin)
             else "You've used ${Storage.usedPct(usedMs, rule.allowMin)}% " +
-                "(${Storage.fmtMin(usedMs)} min) of your usage for ${labelFor(pkg)}"
+                "(${Storage.fmtExact(usedMs)}) of your usage for ${labelFor(pkg)}"
         return Notification.Builder(this, CHANNEL_TIMER)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("${labelFor(pkg)}: time left")

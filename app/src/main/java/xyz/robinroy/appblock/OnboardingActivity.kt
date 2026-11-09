@@ -202,7 +202,7 @@ class OnboardingActivity : Activity() {
         val window = RollingWindow(this)
         val label = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(Ui.display(context, "5 min", 34f).apply { gravity = Gravity.CENTER })
+            addView(Ui.display(context, "5 minutes", 34f).apply { gravity = Gravity.CENTER })
             addView(Ui.muted(context, "in any 2 hours", 14f).apply { gravity = Gravity.CENTER },
                 Ui.lp().apply { topMargin = Ui.dp(context, 4) })
         }
@@ -239,7 +239,7 @@ class OnboardingActivity : Activity() {
             addView(lock, Ui.lp(Ui.dp(context, 64), Ui.dp(context, 64)))
             addView(Ui.txt(context, "This app is blocked.", 26f, R.color.on_ink, tracking = -0.01f, editorial = true),
                 Ui.lp(Ui.WRAP).apply { topMargin = Ui.dp(context, 18) })
-            addView(Ui.txt(context, "Try again in 42 min.", 15f, R.color.on_ink).apply { alpha = 0.6f },
+            addView(Ui.txt(context, "Try again in 42 minutes.", 15f, R.color.on_ink).apply { alpha = 0.6f },
                 Ui.lp(Ui.WRAP).apply { topMargin = Ui.dp(context, 6) })
             addView(TextView(context).apply {
                 text = "Go to home screen"

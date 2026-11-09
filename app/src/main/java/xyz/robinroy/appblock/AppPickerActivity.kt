@@ -126,10 +126,7 @@ class AppPickerActivity : Activity() {
                 row.name.text = app.label
                 row.usage.apply {
                     visibility = if (haveUsage) View.VISIBLE else View.GONE
-                    text = if (app.weekMs == 0L && app.todayMs == 0L)
-                        "Not used in the last 7 days"
-                    else "${Storage.fmtDuration(app.todayMs)} today · " +
-                        "${Storage.fmtDuration(app.weekMs)} last 7 days"
+                    text = Storage.pickerUsage(app.todayMs, app.weekMs)
                 }
                 bindCheck(row, app.pkg in selected, animate = false)
                 return row.root
@@ -202,7 +199,7 @@ class AppPickerActivity : Activity() {
             addView(searchField, Ui.lp().apply {
                 marginStart = side; marginEnd = side; topMargin = Ui.dp(context, 16)
             })
-            addView(Ui.muted(context, "New blocks start at 5 min in any 2 hrs. Change it after.", 13f),
+            addView(Ui.muted(context, "New blocks start at 5 minutes in any 2 hours. Change it after.", 13f),
                 Ui.lp().apply { marginStart = side; marginEnd = side; topMargin = Ui.dp(context, 12) })
             addView(sortRow, Ui.lp().apply {
                 marginStart = side; marginEnd = side

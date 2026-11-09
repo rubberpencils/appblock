@@ -104,7 +104,7 @@ object E2e {
         shell("dumpsys battery reset")
         // Switch the blocker off before wiping: a session still open from the
         // last test would otherwise be written into the wiped storage a few
-        // seconds later ("1 min used" in a test that never opened the app).
+        // seconds later ("1 minute used" in a test that never opened the app).
         // Switching it off writes the session now; the wipe then removes it.
         setBlocker(false)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
@@ -282,11 +282,17 @@ object E2e {
         shell("cmd package resolve-activity --brief -a android.intent.action.MAIN " +
             "-c android.intent.category.HOME").trim().lines().last().substringBefore('/')
 
+    /**
+     * `s` as a pattern, a space matching a no-break space too: the app keeps
+     * some phrases on one line with them (Storage.phrases), and they look the same.
+     */
+    private fun spaced(s: String) = s.split(' ').joinToString("[ \u00A0]") { Pattern.quote(it) }
+
     /** Exact on-screen text, ignoring case: buttons render their labels in caps. */
-    fun text(s: String): BySelector = By.text(Pattern.compile(Pattern.quote(s), Pattern.CASE_INSENSITIVE))
+    fun text(s: String): BySelector = By.text(Pattern.compile(spaced(s), Pattern.CASE_INSENSITIVE))
 
     fun textContains(s: String): BySelector =
-        By.text(Pattern.compile(".*" + Pattern.quote(s) + ".*", Pattern.CASE_INSENSITIVE or Pattern.DOTALL))
+        By.text(Pattern.compile(".*" + spaced(s) + ".*", Pattern.CASE_INSENSITIVE or Pattern.DOTALL))
 
     fun waitFor(selector: BySelector, timeout: Long = WAIT): UiObject2 =
         device.wait(Until.findObject(selector), timeout)

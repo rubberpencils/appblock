@@ -78,20 +78,26 @@ class StorageTest {
     }
 
     @Test
-    fun `minutes used - zero use shows zero`() {
-        assertEquals(0L, Storage.displayedUsedMin(0, 5))
+    fun `time used - none shows zero`() {
+        assertEquals("0 seconds used", Storage.fmtUsed(0, 5))
     }
 
     @Test
-    fun `minutes used - partial minutes round up`() {
-        assertEquals(1L, Storage.displayedUsedMin(1_000, 5))       // 1s -> "1"
-        assertEquals(1L, Storage.displayedUsedMin(60_000, 5))      // exactly 1 min
-        assertEquals(2L, Storage.displayedUsedMin(60_001, 5))      // just over 1 min
+    fun `time used - exact to the second, never rounded up`() {
+        assertEquals("1 second used", Storage.fmtUsed(1_000, 5))
+        assertEquals("0 seconds used", Storage.fmtUsed(999, 5))            // cut, not rounded
+        assertEquals("59 seconds used", Storage.fmtUsed(59_999, 5))
+        assertEquals("1 minute used", Storage.fmtUsed(60_000, 5))
+        assertEquals("1 minute 1 second used", Storage.fmtUsed(61_000, 5))
+        assertEquals("4 minutes 23 seconds used", Storage.fmtUsed(4.min + 23_456, 5))
+        assertEquals("1 hour 2 minutes 3 seconds used", Storage.fmtUsed(62.min + 3_000, 120))
+        assertEquals("2 hours used", Storage.fmtUsed(120.min, 300))
     }
 
     @Test
-    fun `minutes used - display capped at the allowance`() {
-        assertEquals(5L, Storage.displayedUsedMin(9.min, 5))       // overshoot -> "5/5"
+    fun `time used - capped at the allowance`() {
+        assertEquals("5 minutes used", Storage.fmtUsed(9.min, 5))       // overshoot -> the limit
+        assertEquals("5 minutes used", Storage.fmtUsed(5.min + 400, 5))
     }
 
     @Test
@@ -111,12 +117,46 @@ class StorageTest {
     }
 
     @Test
-    fun `warning minutes - one truncated decimal, matching the percent`() {
-        assertEquals("2.5", Storage.fmtMin(150_000))   // 50% of 5 min
-        assertEquals("2.5", Storage.fmtMin(155_999))   // truncates, like the pct
-        assertEquals("2.6", Storage.fmtMin(156_000))
-        assertEquals("3", Storage.fmtMin(3.min))       // whole -> no decimal
-        assertEquals("0", Storage.fmtMin(0))
+    fun `exact time - to the second, cut, with days`() {
+        assertEquals("2 minutes 30 seconds", Storage.fmtExact(150_000))   // 50% of 5 minutes
+        assertEquals("2 minutes 35 seconds", Storage.fmtExact(155_999))   // cut, like the percent
+        assertEquals("3 minutes", Storage.fmtExact(3.min))
+        assertEquals("0 seconds", Storage.fmtExact(0))
+        assertEquals("0 seconds", Storage.fmtExact(-5_000))
+        assertEquals("1 day 1 hour 3 minutes", Storage.fmtExact(1503.min))
+    }
+
+    @Test
+    fun `notes read as sentences in full words`() {
+        assertEquals("Allowance for the next 2 hours.", Storage.allowanceNote(120))
+        assertEquals("Allowance for the next 1 day 6 hours.", Storage.allowanceNote(1800))
+        assertTrue(Storage.cooldownNote(15).startsWith("Tap Stop, and after a cooldown of 15 minutes you can"))
+        assertTrue(Storage.cooldownNote(1).contains("a cooldown of 1 minute you"))
+    }
+
+    @Test
+    fun `picker line - today like the home list, the week in full words`() {
+        assertEquals("Not used in the last 7 days", Storage.pickerUsage(0, 0))
+        assertEquals(Storage.phrases("Not used today", "17 minutes last 7 days"), Storage.pickerUsage(0, 17 * 60_000L))
+        assertEquals(Storage.phrases("22 minutes today", "2 hours 5 minutes last 7 days"),
+            Storage.pickerUsage(22 * 60_000L + 59_000, 125 * 60_000L))
+        assertEquals(Storage.phrases("Less than a minute today", "Less than a minute last 7 days"),
+            Storage.pickerUsage(30_000, 45_000))
+    }
+
+    @Test
+    fun `phrases - joined with a dot, each unbreakable`() {
+        assertEquals("5\u00A0minutes · 2\u00A0minutes\u00A05\u00A0seconds\u00A0used",
+            Storage.phrases("5 minutes", "2 minutes 5 seconds used"))
+        assertEquals("one", Storage.phrases("one"))
+    }
+
+    @Test
+    fun `time left - exact, the partial second counted, adds up with time used`() {
+        assertEquals("5 minutes left", Storage.fmtLeft(0, 5))
+        assertEquals("2 minutes 55 seconds left", Storage.fmtLeft(125_400, 5))   // 2:54.6 left, the part second counted
+        assertEquals("2 minutes 5 seconds used", Storage.fmtUsed(125_400, 5))
+        assertEquals("0 seconds left", Storage.fmtLeft(9.min, 5))
     }
 
     @Test
@@ -392,36 +432,36 @@ class StorageTest {
     }
 
     @Test
-    fun `picker durations - minutes, whole hours, mixed`() {
-        assertEquals("0m", Storage.fmtDuration(0))
-        assertEquals("0m", Storage.fmtDuration(59_999))
-        assertEquals("1m", Storage.fmtDuration(60_000))
-        assertEquals("45m", Storage.fmtDuration(45.min))
-        assertEquals("1h", Storage.fmtDuration(60.min))
-        assertEquals("1h 1m", Storage.fmtDuration(61.min))
-        assertEquals("2h 12m", Storage.fmtDuration(132.min + 30_000))
+    fun `picker durations - in full words, cut to the minute`() {
+        assertEquals("0 minutes", Storage.fmtScreenTime(0))
+        assertEquals("Less than a minute", Storage.fmtScreenTime(59_999))
+        assertEquals("1 minute", Storage.fmtScreenTime(60_000))
+        assertEquals("45 minutes", Storage.fmtScreenTime(45.min))
+        assertEquals("1 hour", Storage.fmtScreenTime(60.min))
+        assertEquals("1 hour 1 minute", Storage.fmtScreenTime(61.min))
+        assertEquals("2 hours 12 minutes", Storage.fmtScreenTime(132.min + 30_000))
     }
 
     @Test
     fun `rule spans - minutes, hours, days, mixed`() {
-        assertEquals("5 min", Storage.fmtSpan(5))
-        assertEquals("45 min", Storage.fmtSpan(45))
-        assertEquals("1 hr", Storage.fmtSpan(60))
-        assertEquals("1 hr 30 min", Storage.fmtSpan(90))
-        assertEquals("2 hrs", Storage.fmtSpan(120))
-        assertEquals("2 hrs 5 min", Storage.fmtSpan(125))
+        assertEquals("5 minutes", Storage.fmtSpan(5))
+        assertEquals("45 minutes", Storage.fmtSpan(45))
+        assertEquals("1 hour", Storage.fmtSpan(60))
+        assertEquals("1 hour 30 minutes", Storage.fmtSpan(90))
+        assertEquals("2 hours", Storage.fmtSpan(120))
+        assertEquals("2 hours 5 minutes", Storage.fmtSpan(125))
         assertEquals("1 day", Storage.fmtSpan(1440))
-        assertEquals("1 day 6 hrs", Storage.fmtSpan(1800))
+        assertEquals("1 day 6 hours", Storage.fmtSpan(1800))
         assertEquals("7 days", Storage.fmtSpan(10080))
-        assertEquals("2 days 30 min", Storage.fmtSpan(2910))
+        assertEquals("2 days 30 minutes", Storage.fmtSpan(2910))
     }
 
     @Test
     fun `today's screen time - unused, under a minute, then whole minutes`() {
         assertEquals("Not used today", Storage.fmtToday(0))
         assertEquals("Less than a minute today", Storage.fmtToday(59_999))
-        assertEquals("1 min today", Storage.fmtToday(60_000))
-        assertEquals("1 hr 7 min today", Storage.fmtToday(67.min + 59_000))   // truncates
+        assertEquals("1 minute today", Storage.fmtToday(60_000))
+        assertEquals("1 hour 7 minutes today", Storage.fmtToday(67.min + 59_000))   // truncates
     }
 
     @Test

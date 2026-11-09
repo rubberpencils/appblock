@@ -340,7 +340,7 @@ class ScreenTimeTest {
     @Test
     fun `screen time in words, never rounded up`() {
         assertEquals("0 minutes", Storage.fmtScreenTime(0))
-        assertEquals("Under 1 minute", Storage.fmtScreenTime(59_000))
+        assertEquals("Less than a minute", Storage.fmtScreenTime(59_000))
         assertEquals("1 minute", Storage.fmtScreenTime(119_000))
         assertEquals("1 hour", Storage.fmtScreenTime(60.min))
         assertEquals("2 hours 1 minute", Storage.fmtScreenTime(121.min))

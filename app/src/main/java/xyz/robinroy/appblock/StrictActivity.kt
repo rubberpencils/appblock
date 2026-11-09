@@ -219,8 +219,7 @@ class StrictActivity : Activity() {
         val title = Ui.display(context, if (counting) "Hang tight. Still locked." else "Want out? You'll have to wait.", 32f)
             .apply { gravity = Gravity.CENTER }
         val body = Ui.muted(context, if (counting) "Most urges fade before the timer does. Leave this screen and it keeps counting."
-            else "Tap Stop, and after a ${Storage.fmtSpan(s.cooldownMin)} cooldown you can turn strict mode off. " +
-                "Everything stays locked until then.", 16f).apply { gravity = Gravity.CENTER }
+            else Storage.cooldownNote(s.cooldownMin), 16f).apply { gravity = Gravity.CENTER }
         addView(centered(ring, 168, chip, title, body), LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
         if (counting) {
             addView(Ui.primaryButton(context, "Never mind, keep it on") {

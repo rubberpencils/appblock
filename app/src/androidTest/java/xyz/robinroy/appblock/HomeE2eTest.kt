@@ -64,7 +64,7 @@ class HomeE2eTest {
         window.text = "1"
         pressOk()
 
-        waitFor(text("10 min in any 1 hr · 0 min used"))
+        waitFor(text("10 minutes in any 1 hour · 0 seconds used"))
         assertEquals(Rule(10, 60), Storage.loadRules(ctx)[CLOCK])
 
         // 10 min used 20-30 min ago: spent under the new rule (under the old
@@ -72,7 +72,7 @@ class HomeE2eTest {
         seedUsage(CLOCK, startAgo = 30.min, endAgo = 20.min, windowMin = 60)
         openApp(CLOCK)
         val message = waitFor(textContains("Clock is blocked")).text
-        assertTrue(message, Regex("(?s).*Try again in (30|31) min\\..*").matches(message))
+        assertTrue(message, Regex("(?s).*Try again in (30|31) minutes\\..*").matches(message))
     }
 
     @Test
@@ -83,18 +83,18 @@ class HomeE2eTest {
 
         waitFor(By.desc("Allow: more")).click()      // 5 -> 6 min
         waitFor(By.desc("In any: less")).click()     // 2 -> 1 hr
-        waitFor(text("6 min in any 1 hr"))           // the live summary follows
+        waitFor(text("6 minutes in any 1 hour"))           // the live summary follows
         pressOk()
 
-        waitFor(text("6 min in any 1 hr · 0 min used"))
+        waitFor(text("6 minutes in any 1 hour · 0 seconds used"))
         assertEquals(Rule(6, 60), Storage.loadRules(ctx)[CLOCK])
 
         // Switching the window's unit keeps the number: 1 hr -> 1 day.
         openLimitDialog("Clock")
-        waitFor(text("day")).click()
+        waitFor(text("days")).click()
         pressOk()
 
-        waitFor(text("6 min in any 1 day · 0 min used"))
+        waitFor(text("6 minutes in any 1 day · 0 seconds used"))
         assertEquals(Rule(6, 1440), Storage.loadRules(ctx)[CLOCK])
     }
 
@@ -104,10 +104,15 @@ class HomeE2eTest {
         openHome()
         openLimitDialog("Clock")
 
-        waitFor(text("30 min in 4 hrs")).click()
+        // The picks scroll sideways; in full words this one starts out of view.
+        waitFor(text("5 minutes in 2 hours"))
+        val pick = device.findObject(By.clazz(android.widget.HorizontalScrollView::class.java))
+            .scrollUntil(androidx.test.uiautomator.Direction.RIGHT, Until.findObject(text("30 minutes in 4 hours")))
+        assertTrue("the 30-in-4 quick pick isn't there", pick != null)
+        pick.click()
         pressOk()
 
-        waitFor(text("30 min in any 4 hrs · 0 min used"))
+        waitFor(text("30 minutes in any 4 hours · 0 seconds used"))
         assertEquals(Rule(30, 240), Storage.loadRules(ctx)[CLOCK])
     }
 
@@ -127,7 +132,7 @@ class HomeE2eTest {
         assertTrue(device.wait(Until.hasObject(text("OK").enabled(true)), E2e.WAIT))
         pressOk()
 
-        waitFor(text("59 min in any 1 hr · 0 min used"))
+        waitFor(text("59 minutes in any 1 hour · 0 seconds used"))
         assertEquals(Rule(59, 60), Storage.loadRules(ctx)[CLOCK])
     }
 
@@ -140,7 +145,7 @@ class HomeE2eTest {
         limitFields()[0].text = "20"
         waitFor(text("Cancel")).click()
 
-        waitFor(text("5 min in any 2 hrs · 0 min used"))
+        waitFor(text("5 minutes in any 2 hours · 0 seconds used"))
         assertEquals(Rule(5, 120), Storage.loadRules(ctx)[CLOCK])
     }
 
@@ -168,7 +173,7 @@ class HomeE2eTest {
         waitFor(text("Clock").clazz(TextView::class.java)).click()   // the row, not the search box
         waitFor(text("Block 1 selected app")).click()
 
-        waitFor(text("5 min in any 2 hrs · 0 min used"))
+        waitFor(text("5 minutes in any 2 hours · 0 seconds used"))
         assertEquals(Rule(5, 120), Storage.loadRules(ctx)[CLOCK])
     }
 
@@ -184,7 +189,7 @@ class HomeE2eTest {
         setBlocker(true)
         openHome()
 
-        waitFor(text("5 min in any 2 hrs · 0 min used"))
+        waitFor(text("5 minutes in any 2 hours · 0 seconds used"))
         assertEquals(Rule(5, 120), Storage.loadRules(ctx)[CLOCK])
     }
 
@@ -204,6 +209,15 @@ class HomeE2eTest {
     }
 
     @Test
+    fun home_saysTheTimeUsedExactly_inFullWords() {
+        freshState(mapOf(CLOCK to Rule(allowMin = 5, windowMin = 120)))
+        seedUsage(CLOCK, startAgo = 30.min, endAgo = 30.min - 125_400, windowMin = 120)   // 2:05.4
+        openHome()
+        // To the second, cut rather than rounded up to "3 min".
+        waitFor(text("5 minutes in any 2 hours · 2 minutes 5 seconds used"))
+    }
+
+    @Test
     fun withoutUsageAccess_homeShowsTimeLeftInsteadOfScreenTime() {
         freshState(mapOf(CLOCK to Rule(allowMin = 5, windowMin = 120)))
         seedUsage(CLOCK, startAgo = 30.min, endAgo = 28.min, windowMin = 120)
@@ -211,7 +225,7 @@ class HomeE2eTest {
         openHome()
 
         // Optional: blocking stays on, the row just can't show today's screen time.
-        waitFor(text("3 min left"))
+        waitFor(text("3 minutes left"))
         assertFalse(appears(textContains("Blocking is paused"), timeout = 1_000))
     }
 }
