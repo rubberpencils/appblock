@@ -60,7 +60,16 @@ object History {
             db.execSQL("CREATE TABLE meta(key TEXT PRIMARY KEY, value INTEGER NOT NULL)")
         }
 
+        // One app's history, read fast for its own page. Added on open, not with a new
+        // version: an older build installed over this one then still opens the file.
+        override fun onOpen(db: SQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS sessions_app ON sessions(app, start)")
+        }
+
         override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+
+        // A test build briefly numbered it 2, with the same tables: open it as it is.
+        override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {}
     }
 
     /** Run `work` on the history thread; anything it throws is logged, never raised. */
@@ -90,30 +99,49 @@ object History {
     /**
      * The sessions of `day` (cut to it by the reader), then `done` with them
      * on the main thread. Today's comes after a sync, with what's on screen
-     * now; null if the history couldn't be read.
+     * now; null if the history couldn't be read. With `pkg`, that app's alone.
      */
-    fun loadDay(ctx: Context, day: LocalDate, zone: ZoneId, done: (Day?) -> Unit) {
+    fun loadDay(ctx: Context, day: LocalDate, zone: ZoneId, pkg: String? = null, done: (Day?) -> Unit) {
+        val (from, to) = Storage.dayBounds(day, zone)
+        load(ctx, from, to, zone, pkg) { r -> done(r?.let { Day(day, it.sessions, from, to, minOf(to, it.now), it.firstDay) }) }
+    }
+
+    /** Sessions between two times, as of `now`, and the day the history starts (null: empty). */
+    class Span(val sessions: List<Storage.Session>, val now: Long, val firstDay: LocalDate?)
+
+    /**
+     * One app's sessions from `first` to `last` (days, today included), then
+     * `done` on the main thread; null if the history couldn't be read.
+     */
+    fun loadApp(ctx: Context, pkg: String, first: LocalDate, last: LocalDate, zone: ZoneId, done: (Span?) -> Unit) =
+        load(ctx, Storage.dayBounds(first, zone).first, Storage.dayBounds(last, zone).second, zone, pkg, done)
+
+    private fun load(ctx: Context, from: Long, to: Long, zone: ZoneId, pkg: String?, done: (Span?) -> Unit) {
         val app = ctx.applicationContext
         run {
-            var result: Day? = null
+            var result: Span? = null
             try {
-                val today = LocalDate.now(zone)
-                if (day == today && autoSync && due(app, SCREEN_SYNC_MS)) sync(app)
-                val (from, to) = Storage.dayBounds(day, zone)
+                val now0 = System.currentTimeMillis()
+                // Today's in it: synced first (at most every SCREEN_SYNC_MS), with what's on screen now.
+                val withToday = to > now0
+                if (withToday && autoSync && due(app, SCREEN_SYNC_MS)) sync(app)
                 val db = db(app)
                 val stored = mutableListOf<Storage.Session>()
+                val where = "s.start >= ? AND s.start < ? AND s.stop > ?" + if (pkg != null) " AND a.pkg = ?" else ""
+                val args = listOfNotNull((from - Storage.MAX_SESSION_MS).toString(), to.toString(), from.toString(), pkg)
                 db.rawQuery("SELECT a.pkg, s.start, s.stop FROM sessions s JOIN apps a ON a.id = s.app " +
-                    "WHERE s.start >= ? AND s.start < ? AND s.stop > ? ORDER BY s.start",
-                    arrayOf((from - Storage.MAX_SESSION_MS).toString(), to.toString(), from.toString())).use { c ->
+                    "WHERE $where ORDER BY s.start", args.toTypedArray()).use { c ->
                     while (c.moveToNext()) stored += Storage.Session(c.getString(0), c.getLong(1), c.getLong(2))
                 }
                 val now = System.currentTimeMillis()
-                val sessions = if (day == today) stored + open.map { it.copy(end = minOf(it.end, now)) } else stored
+                val sessions = if (withToday) {
+                    stored + open.filter { pkg == null || it.pkg == pkg }.map { it.copy(end = minOf(it.end, now)) }
+                } else stored
                 val first = db.rawQuery("SELECT MIN(start) FROM sessions", null).use { c ->
                     if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
                 }
                 val firstDay = first?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
-                result = Day(day, sessions, from, to, minOf(to, now), firstDay)
+                result = Span(sessions, now, firstDay)
             } finally {
                 val r = result
                 main.post { done(r) }

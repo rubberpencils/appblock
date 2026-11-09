@@ -26,7 +26,10 @@ its view id, no text) when they're blocked. Besides switching it on in Settings 
 battery exemption so the phone doesn't put it to sleep. Usage access is optional,
 for screen time: the home screen shows each day's, across the day, from a history
 AppBlock keeps on the phone (copied from Android's usage events, which Android
-itself drops after a week or so; left out of backups). While a limited app is on screen, a notification counts
+itself drops after a week or so; left out of backups), any day of it a tap away on
+a calendar, and each app's own page its patterns (daily average, most used day,
+peak hours). Apps that shouldn't count, like maps while driving, can be left out
+of the totals. While a limited app is on screen, a notification counts
 down its time (with 50%/90% warnings); two limited apps side by side get one each.
 
 Installing the APK from GitHub on Android 13 or later? Android greys out the

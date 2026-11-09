@@ -103,6 +103,8 @@ class UsageChartView(context: Context) : View(context) {
         for (i in 0 until known.coerceAtMost(n)) peak = maxOf(peak, limited[i], other[i])
         if (peak <= 0f) return
         fun series(values: FloatArray, fillPaint: Paint, line: Paint) {
+            // A series with nothing in it isn't drawn: no line along the baseline.
+            if ((0 until known.coerceAtMost(n)).none { values[it] > 0f }) return
             val xs = FloatArray(shown + 2)
             val ys = FloatArray(shown + 2)
             xs[0] = 0f; ys[0] = bottom

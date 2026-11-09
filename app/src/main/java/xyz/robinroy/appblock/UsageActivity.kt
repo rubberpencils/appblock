@@ -11,7 +11,9 @@ import java.time.LocalDate
 /**
  * Screen time, in full, from the home screen's card: the day's chart and
  * busiest hour (ScreenTimeView), then every app used that day, most first,
- * with a bar against the top one and its time. Apps AppBlock limits say so.
+ * with a bar against the top one and its time. Apps AppBlock limits say so;
+ * the apps the user doesn't count come last, under their own heading.
+ * Tapping an app opens its own page (AppUsageActivity).
  */
 class UsageActivity : Activity() {
 
@@ -59,16 +61,35 @@ class UsageActivity : Activity() {
             return
         }
         val limited = Storage.loadRules(this).keys
-        val top = totals.first().second.toFloat()
-        for ((pkg, ms) in totals) list.addView(appRow(pkg, ms, ms / top, pkg in limited))
+        val ignored = Storage.screenTimeIgnored(this)
+        val (counted, notCounted) = totals.partition { it.first !in ignored }
+        // Bars against the top app that counts (the ones that don't stop at full).
+        val top = (counted.firstOrNull() ?: totals.first()).second.toFloat()
+        for ((pkg, ms) in counted) list.addView(appRow(pkg, ms, ms / top, pkg in limited, d.day, counts = true))
+        if (notCounted.isNotEmpty()) {
+            list.addView(Ui.eyebrow(this, "Not counted"), Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 20) })
+            list.addView(Ui.muted(this, "Left out of your screen time. Tap one to change that.", 13f),
+                Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 4) })
+            for ((pkg, ms) in notCounted) list.addView(appRow(pkg, ms, ms / top, pkg in limited, d.day, counts = false))
+        }
     }
 
-    private fun appRow(pkg: String, ms: Long, fraction: Float, limited: Boolean) = LinearLayout(this).apply {
+    private fun appRow(pkg: String, ms: Long, fraction: Float, limited: Boolean, day: LocalDate, counts: Boolean) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 10))
         val name = labelFor(pkg)
-        contentDescription = "$name, ${Storage.fmtScreenTime(ms)}" + if (limited) ", limited" else ""
+        contentDescription = "$name, ${Storage.fmtScreenTime(ms)}" + (if (limited) ", limited" else "") +
+            if (counts) "" else ", not counted"
+        isClickable = true
+        isFocusable = true
+        setOnClickListener {
+            startActivity(android.content.Intent(context, AppUsageActivity::class.java)
+                .putExtra(AppUsageActivity.EXTRA_PKG, pkg)
+                .putExtra(EXTRA_DAY, day.toString()))
+        }
+        Ui.press(this, 0.98f)
+        if (!counts) alpha = 0.6f
         addView(Ui.appIcon(context, iconFor(pkg), 34))
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -84,7 +105,7 @@ class UsageActivity : Activity() {
                 background = Ui.shape(context, R.color.accent_soft, 99f)
                 setPadding(Ui.dp(context, 8), Ui.dp(context, 2), Ui.dp(context, 8), Ui.dp(context, 2))
             }, Ui.lp(Ui.WRAP).apply { topMargin = Ui.dp(context, 4) })
-            addView(bar(fraction, if (limited) R.color.accent else R.color.chart_other_line),
+            addView(bar(fraction, if (limited && counts) R.color.accent else R.color.chart_other_line),
                 Ui.lp(Ui.MATCH, Ui.dp(context, 4)).apply { topMargin = Ui.dp(context, 7) })
         }, Ui.lp(0).apply { weight = 1f; marginStart = Ui.dp(context, 12) })
     }
