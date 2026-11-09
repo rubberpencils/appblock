@@ -1198,6 +1198,59 @@ object Storage {
     fun counted(sessions: List<Session>, ignored: Set<String>): List<Session> =
         if (ignored.isEmpty()) sessions else sessions.filter { it.pkg !in ignored }
 
+    // ---- the Usage page's list: search, sort, and the apps with no use ----
+
+    /** An app on the Usage page: its name and its time on the day showing. */
+    data class AppUse(val pkg: String, val label: String, val ms: Long)
+
+    enum class UsageSort { TIME, NAME }
+
+    /** An app whose name has the search in it, any case; an empty search finds all. */
+    fun matches(label: String, query: String): Boolean =
+        query.isBlank() || label.lowercase().contains(query.trim().lowercase())
+
+    /** By time (ties by name) or by name (ties by package), either way round. */
+    fun sortApps(apps: List<AppUse>, sort: UsageSort, descending: Boolean): List<AppUse> {
+        val byName = compareBy<AppUse>({ it.label.lowercase() }, { it.pkg })
+        val key = when (sort) {
+            UsageSort.TIME -> if (descending) compareByDescending<AppUse> { it.ms } else compareBy { it.ms }
+            UsageSort.NAME -> if (descending) byName.reversed() else byName
+        }
+        return apps.sortedWith(if (sort == UsageSort.TIME) key.then(byName) else key)
+    }
+
+    /** The installed apps (package to name) with no time on the day: by name, each once. */
+    fun noUsage(installed: Map<String, String>, used: Set<String>): List<AppUse> =
+        installed.filterKeys { it !in used }.map { (pkg, label) -> AppUse(pkg, label, 0) }
+            .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+
+    /**
+     * A chart's minute marks for a peak of `peakMin` minutes: round steps
+     * (1, 2, 5, 10, 15, 20 or 30), the fewest that still give at most three
+     * marks, the last at or above the peak and never past `capMin` (a
+     * slice can't hold more than its own length). Empty for an empty chart.
+     */
+    fun niceTicks(peakMin: Float, capMin: Int): List<Int> {
+        if (peakMin <= 0f) return emptyList()
+        val peak = minOf(peakMin, capMin.toFloat())
+        for (step in listOf(1, 2, 5, 10, 15, 20, 30)) {
+            val top = (kotlin.math.ceil(peak / step).toInt() * step).coerceAtLeast(step)
+            if (top / step <= 3 && top <= capMin) return (step..top step step).toList()
+        }
+        return listOf(capMin)
+    }
+
+    /** A slice of the day: "9:15 to 9:30 PM", or "11:45 AM to 12:00 PM" across noon. */
+    fun sliceRange(start: Long, end: Long, zone: java.time.ZoneId): String {
+        val f = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH)
+        val a = java.time.Instant.ofEpochMilli(start).atZone(zone).format(f)
+        val b = java.time.Instant.ofEpochMilli(end).atZone(zone).format(f)
+        return if (a.takeLast(2) == b.takeLast(2)) "${a.dropLast(3)} to $b" else "$a to $b"
+    }
+
+    /** A minute mark: "5 min". */
+    fun fmtTick(min: Int): String = "$min min"
+
     // ---- the calendar: screen time's date picker ----
 
     /**

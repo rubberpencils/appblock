@@ -111,6 +111,12 @@ class AppUsageActivity : Activity() {
         loadStats()
     }
 
+    /** A tap outside a chart's card puts the chart back (Readout). */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        Readout.outside(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onResume() {
         super.onResume()
         // The first load is the views' own; back on screen, shown again (today moves on).
@@ -217,8 +223,8 @@ class AppUsageActivity : Activity() {
         longest.set(if (s.longestMs > 0) Storage.fmtScreenTime(s.longestMs) else "None", null)
         val peak = s.peakHour
         peakValue.text = if (peak == null) "Not used" else Storage.hourRange(peak)
-        bars.set(s.hours, peak, if (limited) R.color.accent else R.color.chart_other_line)
-        bars.contentDescription = "Peak hours, ${range.label}: ${peakValue.text}"
+        bars.set(s.hours, peak, R.color.accent, s.days)
+        bars.summary = "Peak hours, ${range.label}: ${peakValue.text}"
     }
 
     /** A stat: what it is, the value, and an optional line under it. */

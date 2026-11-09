@@ -527,4 +527,71 @@ class ScreenTimeTest {
         assertEquals("About 1 minute each", Storage.perOpenText(60_000))
         assertEquals("About 1 hour 5 minutes each", Storage.perOpenText(65.min))
     }
+
+    // ---- the Usage page's list ----
+
+    private val apps = listOf(
+        Storage.AppUse("b.chrome", "Chrome", 30.min), Storage.AppUse("a.yt", "YouTube", 90.min),
+        Storage.AppUse("c.maps", "maps", 30.min), Storage.AppUse("d.gmail", "Gmail", 5.min))
+
+    @Test
+    fun `search finds a name with the words in it, any case`() {
+        assertTrue(Storage.matches("YouTube", ""))
+        assertTrue(Storage.matches("YouTube", "  "))
+        assertTrue(Storage.matches("YouTube", "tube"))
+        assertTrue(Storage.matches("YouTube", " YOU "))
+        assertFalse(Storage.matches("YouTube", "maps"))
+    }
+
+    @Test
+    fun `sorted by time, most first, ties by name`() {
+        assertEquals(listOf("YouTube", "Chrome", "maps", "Gmail"),
+            Storage.sortApps(apps, Storage.UsageSort.TIME, descending = true).map { it.label })
+        assertEquals(listOf("Gmail", "Chrome", "maps", "YouTube"),
+            Storage.sortApps(apps, Storage.UsageSort.TIME, descending = false).map { it.label })
+    }
+
+    @Test
+    fun `sorted by name, any case, either way round`() {
+        assertEquals(listOf("Chrome", "Gmail", "maps", "YouTube"),
+            Storage.sortApps(apps, Storage.UsageSort.NAME, descending = false).map { it.label })
+        assertEquals(listOf("YouTube", "maps", "Gmail", "Chrome"),
+            Storage.sortApps(apps, Storage.UsageSort.NAME, descending = true).map { it.label })
+    }
+
+    @Test
+    fun `the apps with no use that day, by name`() {
+        val installed = mapOf("a.yt" to "YouTube", "z.cam" to "camera", "y.calc" to "Calculator", "b.chrome" to "Chrome")
+        val none = Storage.noUsage(installed, setOf("a.yt", "b.chrome", "q.uninstalled"))
+        assertEquals(listOf("Calculator", "camera"), none.map { it.label })
+        assertTrue(none.all { it.ms == 0L })
+        assertEquals(emptyList<Storage.AppUse>(), Storage.noUsage(installed, installed.keys))
+    }
+
+    @Test
+    fun `a chart's minute marks are round, at most three, up to the peak`() {
+        assertEquals(emptyList<Int>(), Storage.niceTicks(0f, 15))
+        assertEquals(listOf(1), Storage.niceTicks(0.3f, 15))
+        assertEquals(listOf(1, 2, 3), Storage.niceTicks(2.5f, 15))
+        assertEquals(listOf(2, 4), Storage.niceTicks(3.2f, 15))
+        assertEquals(listOf(5, 10), Storage.niceTicks(9f, 15))
+        assertEquals(listOf(5, 10, 15), Storage.niceTicks(12f, 15))
+        assertEquals(listOf(5, 10, 15), Storage.niceTicks(15f, 15))
+        // Never past what a slice can hold.
+        assertEquals(listOf(5, 10, 15), Storage.niceTicks(16f, 15))
+        // An hour's worth a day.
+        assertEquals(listOf(10, 20, 30), Storage.niceTicks(24f, 60))
+        assertEquals(listOf(20, 40, 60), Storage.niceTicks(50f, 60))
+        assertEquals("5 min", Storage.fmtTick(5))
+    }
+
+    @Test
+    fun `a slice of the day in words`() {
+        val day = LocalDate.of(2026, 6, 1)
+        fun at(h: Int, m: Int) = day.atTime(h, m).atZone(zone).toInstant().toEpochMilli()
+        assertEquals("9:15 to 9:30 PM", Storage.sliceRange(at(21, 15), at(21, 30), zone))
+        assertEquals("11:45 AM to 12:00 PM", Storage.sliceRange(at(11, 45), at(12, 0), zone))
+        assertEquals("11:45 PM to 12:00 AM", Storage.sliceRange(at(23, 45), at(23, 45) + 15.min, zone))
+        assertEquals("12:00 to 12:15 AM", Storage.sliceRange(at(0, 0), at(0, 15), zone))
+    }
 }

@@ -289,4 +289,75 @@ class UsageE2eTest {
         E2e.waitForFresh(By.desc("Phone, 15 minutes"))
         E2e.waitForFresh(text("55 minutes"))
     }
+
+    @Test
+    fun usagePage_searchesSorts_andListsTheAppsWithNoUse() {
+        seed()
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        waitFor(text("See apps")).click()
+        fun above(a: String, b: String) =
+            E2e.waitForFresh(By.descStartsWith("$a, ")).visibleBounds.top < E2e.waitForFresh(By.descStartsWith("$b, ")).visibleBounds.top
+
+        // Time, most first; tapped again, least first. Name: A first; again, Z first.
+        assertTrue(above("Clock", "Phone"))
+        waitFor(By.descStartsWith("Sort by Time")).click()
+        assertTrue(E2e.eventually { above("Phone", "Clock") })
+        waitFor(By.descStartsWith("Sort by Name")).click()
+        assertTrue(E2e.eventually { above("Clock", "Phone") })
+        waitFor(By.descStartsWith("Sort by Name")).click()
+        assertTrue(E2e.eventually { above("Phone", "Clock") })
+
+        // Search: a part of a name, any case.
+        waitFor(text("Search apps")).text = "cLo"
+        E2e.waitForFresh(By.desc("Clock, 40 minutes, limited"))
+        assertTrue(E2e.eventually { device.findObject(By.descStartsWith("Phone, ")) == null })
+
+        // The apps with nothing that day: at the end, on request.
+        waitFor(By.clazz("android.widget.EditText")).text = "fixture"
+        assertTrue(E2e.eventually { device.findObject(By.descStartsWith("Clock, ")) == null })
+        assertFalse(appears(By.desc("Feed fixture, No usage"), timeout = 1_000))
+        E2e.scrollTo(By.descStartsWith("Apps with no logged usage, 1")).click()
+        E2e.scrollTo(By.desc("Feed fixture, No usage")).click()
+        // Its page: nothing that day, but it's there.
+        waitFor(text("Count in screen time"))
+        E2e.waitForFresh(text("Not used on this day."))
+    }
+
+    /** Where the chart draws `fraction` of its width: its plot stops short of the minute marks on the right. */
+    private fun plotX(chart: androidx.test.uiautomator.UiObject2, fraction: Double, widestMark: String): Int {
+        val label = android.graphics.Paint().apply { textSize = Ui.dpf(ctx, 11f); typeface = Ui.sans(ctx) }
+        val b = chart.visibleBounds
+        val plot = b.width() - (label.measureText(widestMark) + Ui.dpf(ctx, 8f))
+        return (b.left + plot * fraction).toInt()
+    }
+
+    @Test
+    fun chart_readsOffASlice_andLetsGoOnATapOutside() {
+        seed()
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        val chart = E2e.waitForFresh(By.descStartsWith("Screen time, Yesterday: 55 minutes"))
+
+        // 9:15 to 9:30 PM: all Clock, exactly 15 minutes. (The page stays: a tap on the chart reads it.)
+        device.click(plotX(chart, (21 * 60 + 22) / 1440.0, Storage.fmtTick(15)), chart.visibleBounds.centerY())
+        E2e.waitForFresh(By.desc("9:15 to 9:30 PM: Limited apps: 15 minutes, Other apps: 0 seconds"))
+        assertFalse(appears(text("Apps"), timeout = 500))
+
+        // A tap outside the card: the chart as it was.
+        waitFor(text("Blocked apps")).click()
+        E2e.waitForFresh(By.descStartsWith("Screen time, Yesterday: 55 minutes"))
+
+        // An app's page: its peak hours read off the same way, a day's worth on average.
+        History.insertForTests(ctx, listOf(used(CLOCK, today.minusDays(2), 21, 10, 20)))
+        waitFor(text("See apps")).click()
+        waitFor(By.desc("Clock, 40 minutes, limited")).click()
+        val bars = E2e.scrollTo(By.descStartsWith("Peak hours, 7 days"))
+        device.click(plotX(bars, 21.5 / 24, Storage.fmtTick(60)), bars.visibleBounds.centerY())
+        // 60 minutes at 9 PM over the 3 days of history.
+        E2e.waitForFresh(By.desc("9 PM to 10 PM: 20 minutes a day on average"))
+        waitFor(By.descStartsWith("Longest session")).click()
+        E2e.waitForFresh(By.desc("Peak hours, 7 days: 9 PM to 10 PM"))
+    }
 }

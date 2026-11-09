@@ -114,8 +114,9 @@ class ScreenTimeView(
         // One app's page shows it whether it counts or not; everywhere else, only what counts.
         val sessions = if (only != null) d.sessions else Storage.counted(d.sessions, Storage.screenTimeIgnored(activity))
         val bucketMs = CHART_BUCKET_MIN * 60_000L
-        val b = Storage.buckets(sessions, d.from, d.to, bucketMs, limited, d.upTo)
-        chart.set(b, d.from, d.to, bucketMs, zone, animate)
+        // One app's chart is in the accent, limited or not.
+        val b = Storage.buckets(sessions, d.from, d.to, bucketMs, if (only != null) setOf(only) else limited, d.upTo)
+        chart.set(b, d.from, d.to, bucketMs, zone, animate, d.upTo, single = only != null)
         val all = Storage.screenTimeMs(sessions, d.from, d.to)
         val lim = Storage.screenTimeMs(sessions.filter { it.pkg in limited }, d.from, d.to)
         val noHistory = d.firstDay == null || d.day.isBefore(d.firstDay)
@@ -128,7 +129,7 @@ class ScreenTimeView(
             only != null -> if (d.day == today) "Not used yet today." else "Not used on this day."
             else -> if (d.day == today) "Nothing yet today." else "Nothing on this day."
         }
-        chart.contentDescription = "Screen time, ${dayTitle.text}: ${total.text}." +
+        chart.summary = "Screen time, ${dayTitle.text}: ${total.text}." +
             (if (only == null) " Limited apps ${limitedLegend.second.text}." else "") +
             (if (p != null) " ${peak.text}." else "")
         enable(prev, d.firstDay != null && d.day.isAfter(d.firstDay))
