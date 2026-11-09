@@ -24,6 +24,7 @@ object ReminderCard {
         confirmTitle: String? = null,
         confirmBody: String? = null,
         onHideForever: (() -> Unit)? = null,
+        icon: Int = R.drawable.ic_bell,
     ): LinearLayout {
         lateinit var card: LinearLayout
         card = LinearLayout(activity).apply {
@@ -35,7 +36,7 @@ object ReminderCard {
             isFocusable = true
             setOnClickListener { onFix() }
             Ui.press(this, 0.98f)
-            addView(Ui.icon(activity, R.drawable.ic_bell, 18, R.color.warn))
+            addView(Ui.icon(activity, icon, 18, R.color.warn))
             addView(Ui.txt(activity, message, 14f, R.color.warn, lineSpacing = 1.35f).apply {
                 setPadding(Ui.dp(activity, 12), Ui.dp(activity, 10), Ui.dp(activity, 6), Ui.dp(activity, 10))
             }, Ui.lp(0).apply { weight = 1f })

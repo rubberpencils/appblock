@@ -36,6 +36,8 @@ object Clock {
             Log.i(TAG, "the clock moved ${moved / 1000} s: the usage logs and strict mode move with it")
             Storage.shiftUsage(ctx, moved)
             Strict.clockMoved(ctx, moved, wall)
+            // The screen-time history moves too, on its next sync: now, before a restart makes the move unmeasurable.
+            History.syncIfDue(ctx, 0)
         }
         return moved
     }

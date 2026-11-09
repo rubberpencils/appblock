@@ -80,7 +80,7 @@ object E2e {
 
     /**
      * Every required setting on, usage access and notifications allowed, onboarding seen, the
-     * given rules and nothing else (no usage, no leftover block wall), the
+     * given rules and nothing else (no usage, no screen-time history, no leftover block wall), the
      * blocker running, and the launcher in front.
      */
     fun freshState(rules: Map<String, Rule> = emptyMap()) {
@@ -109,6 +109,9 @@ object E2e {
         setBlocker(false)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         ctx.getSharedPreferences("appblock", Context.MODE_PRIVATE).edit().clear().commit()
+        // An empty screen-time history, and no syncing by itself: tests seed what they need.
+        History.autoSync = false
+        History.resetForTests(ctx)
         Storage.setOnboardingSeen(ctx)
         Storage.saveRules(ctx, rules)
         Feeds.useForTests(null)
@@ -289,6 +292,39 @@ object E2e {
         device.wait(Until.findObject(selector), timeout)
             ?: throw AssertionError("not on screen after ${timeout}ms: $selector")
 
+    /**
+     * Like waitFor, but looks at the screen afresh each time: UI Automator
+     * keeps a cache of what's on screen, and late in a long run it can miss
+     * a text that changed in place (the screen shows the new one, the cache
+     * the old). For text that changes after something loads.
+     */
+    fun waitForFresh(selector: BySelector, timeout: Long = WAIT): UiObject2 {
+        val until = System.currentTimeMillis() + timeout
+        while (true) {
+            if (android.os.Build.VERSION.SDK_INT >= 34) uiAutomation.clearCache()
+            device.findObject(selector)?.let { return it }
+            if (System.currentTimeMillis() > until) throw AssertionError("not on screen after ${timeout}ms: $selector")
+            Thread.sleep(250)
+        }
+    }
+
+    /**
+     * The object once it has stopped moving: a sheet's buttons slide up with
+     * it, and a tap found mid-slide lands where the button was, maybe on the
+     * dimmed page around the sheet, which closes it.
+     */
+    fun waitStill(selector: BySelector, timeout: Long = WAIT): UiObject2 {
+        val until = System.currentTimeMillis() + timeout
+        var last: android.graphics.Rect? = null
+        while (System.currentTimeMillis() < until) {
+            val now = try { device.findObject(selector)?.visibleBounds } catch (e: StaleObjectException) { null }
+            if (now != null && now == last) return waitFor(selector)
+            last = now
+            Thread.sleep(250)
+        }
+        throw AssertionError("not still on screen after ${timeout}ms: $selector")
+    }
+
     fun appears(selector: BySelector, timeout: Long = WAIT): Boolean =
         device.wait(Until.hasObject(selector), timeout)
 
@@ -325,6 +361,13 @@ object E2e {
             // From the shell: it can write the output directory, the app can't.
             shell("mkdir -p $dir")
             shell("screencap -p $dir/$name.png")
+            // What UI Automator saw, beside what was on screen: they can differ.
+            try {
+                java.io.ByteArrayOutputStream().use { out ->
+                    device.dumpWindowHierarchy(out)
+                    Log.i("E2eFailure", "window hierarchy:\n$out")
+                }
+            } catch (e: Exception) { Log.w("E2eFailure", "no window hierarchy: $e") }
             shell("dumpsys accessibility").lines()
                 .forEach { Log.i("E2eFailure", it) }
             shell("logcat -d -v time -f $dir/$name.logcat.txt")

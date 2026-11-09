@@ -117,6 +117,7 @@ class MainActivity : Activity() {
                         " saved and will reappear once it's back on.")
                     .apply { gravity = Gravity.CENTER }, 28)
             Storage.HomeList.EMPTY_HINT -> if (ready) {
+                screenTimeCard(animate)?.let { put(it, 28) }
                 if (!notificationsEnabled() && !Storage.notifReminderDismissed(this)) {
                     put(notifReminder(), 20)
                 }
@@ -127,11 +128,7 @@ class MainActivity : Activity() {
                 val entries = rules.entries.sortedBy { labelFor(it.key).lowercase() }
                 val today = todayUsageMs()
                 val now = System.currentTimeMillis()
-                val spent = entries.count { (pkg, rule) ->
-                    Storage.usedMs(Storage.loadIntervals(this, pkg), rule.windowMin, now) >=
-                        rule.allowMin * 60_000L
-                }
-                put(statusBlock(entries.size, spent), 28)
+                screenTimeCard(animate)?.let { put(it, 28) }
                 if (!notificationsEnabled() && !Storage.notifReminderDismissed(this)) {
                     put(notifReminder(), 12)
                 }
@@ -283,40 +280,58 @@ class MainActivity : Activity() {
 
     // ----------------------------------------------------------- status/empty
 
-    /** The count, back in its plate: one box, lifted off the page. */
-    private fun statusBlock(count: Int, spent: Int): View {
-        val inner = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val p = Ui.dp(context, 22)
-            setPadding(p, p, p, p)
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = Ui.shape(context, R.color.accent_soft, 99f)
-                setPadding(Ui.dp(context, 10), Ui.dp(context, 6), Ui.dp(context, 12), Ui.dp(context, 6))
-                addView(View(context).apply {
-                    background = Ui.shape(context, R.color.accent, 0f, oval = true)
-                }, LinearLayout.LayoutParams(Ui.dp(context, 7), Ui.dp(context, 7)))
-                addView(Ui.txt(context, "On duty", 13f, R.color.accent, medium = true).apply {
-                    setPadding(Ui.dp(context, 7), 0, 0, 0)
-                })
-            }, Ui.lp(Ui.WRAP))
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.BOTTOM
-                addView(Ui.txt(context, count.toString(), 72f, tracking = -0.02f,
-                    lineSpacing = 1f, editorial = true))
-                addView(Ui.muted(context, if (count == 1) "app guarded" else "apps guarded", 17f).apply {
-                    setPadding(Ui.dp(context, 10), 0, 0, Ui.dp(context, 9))
-                })
-            }, Ui.lp().apply { topMargin = Ui.dp(context, 18) })
-            addView(Ui.muted(context,
-                if (spent == 0) "All within budget. Time comes back as it passes."
-                else if (spent == 1) "1 app is waiting for its time to come back."
-                else "$spent apps are waiting for their time to come back.", 14f)
-                .apply { setPadding(0, Ui.dp(context, 8), 0, 0) })
+    private var screenTime: ScreenTimeView? = null
+
+    /**
+     * The top card: the day's screen time with Usage access (tap it for the
+     * Usage page), a card asking for it without, or nothing once that's
+     * dismissed (the ⓘ page still has the switch).
+     */
+    private fun screenTimeCard(animate: Boolean): View? {
+        return when (Storage.usageCard(usageAccessGranted(this), Storage.usageCardDismissed(this))) {
+            Storage.UsageCard.STATS -> {
+                // The same view across rebuilds of the page: it keeps its day and what it shows while it refreshes.
+                val kept = screenTime
+                val view = if (kept != null) {
+                    (kept.parent as? android.view.ViewGroup)?.removeView(kept)
+                    kept.load()
+                    kept
+                } else ScreenTimeView(this, null, animate).also { screenTime = it }
+                val inner = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    val p = Ui.dp(context, 20)
+                    setPadding(p, p, p, Ui.dp(context, 8))
+                    addView(view, Ui.lp())
+                    addView(LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                        setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 8))
+                        addView(Ui.txt(context, "See apps", 14f, medium = true))
+                        addView(Ui.icon(context, R.drawable.ic_chevron, 14, R.color.ink).apply {
+                            (layoutParams as LinearLayout.LayoutParams).marginStart = Ui.dp(context, 6)
+                        })
+                    }, Ui.lp())
+                }
+                Ui.bezel(this, inner).apply {
+                    contentDescription = "Screen time, see apps"
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        startActivity(Intent(context, UsageActivity::class.java)
+                            .putExtra(UsageActivity.EXTRA_DAY, view.day.toString()))
+                    }
+                }
+            }
+            Storage.UsageCard.ASK -> ReminderCard.make(
+                this,
+                message = "See where your time goes. Allow usage access for your daily screen time.",
+                onFix = { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) },
+                confirmTitle = "Hide screen time?",
+                confirmBody = "You can turn it on any time: tap ⓘ at the top of the home screen, then Usage access.",
+                onHideForever = { Storage.setUsageCardDismissed(this) },
+                icon = R.drawable.ic_stat)
+            Storage.UsageCard.NONE -> null
         }
-        return Ui.bezel(this, inner)
     }
 
     /** Nothing here yet: three quiet gray lines, centered in the page. */
@@ -587,7 +602,7 @@ class MainActivity : Activity() {
                         { requirementFix(req) }))
                 }
                 addView(permission(R.drawable.ic_clock, "Usage access",
-                    "Optional. Shows your screen time on the home list and in the picker.",
+                    "Optional. Shows your screen time, day by day, on the home screen and in the picker.",
                     { usageAccessGranted(this@MainActivity) },
                     { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }))
                 addView(permission(R.drawable.ic_bell, "Notifications",

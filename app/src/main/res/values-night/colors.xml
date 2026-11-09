@@ -15,4 +15,7 @@
     <color name="danger">#F08B8F</color>
     <color name="danger_soft">#3A2426</color>
     <color name="scrim">#CC000000</color>
+    <!-- The screen-time chart's "other apps": a quiet neutral beside the accent (limited apps). -->
+    <color name="chart_other">#55524C</color>
+    <color name="chart_other_line">#8A8478</color>
 </resources>

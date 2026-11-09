@@ -869,6 +869,299 @@ object Storage {
     fun strictWalls(walledBefore: Set<String>, onScreen: Set<String>, naming: Set<String>): Set<String> =
         walledBefore.intersect(onScreen) + naming
 
+    // ---- screen time: AppBlock's own history of what was on screen, from Android's usage events ----
+    //
+    // Android keeps its usage events for a week or so. AppBlock copies them,
+    // as sessions (an app, from when it came on screen to when it left),
+    // into a database of its own (History.kt) and keeps them for good, so the
+    // home screen can show any day's screen time. These are the decisions;
+    // the database and the syncing are in History.kt.
+
+    /** One of Android's usage events, as plain values (UsageEvents.Event, which the JVM tests can't make). */
+    data class UsageEv(val time: Long, val type: Int, val pkg: String, val cls: String? = null)
+
+    /** An app on screen from `start` to `end` (wall-clock ms). */
+    data class Session(val pkg: String, val start: Long, val end: Long)
+
+    /**
+     * Sessions read from a run of events: the `closed` ones, and the `open`
+     * ones (still on screen at the end, shown but not stored). `safePoint`
+     * is where the next read must start from to see the open ones begin.
+     */
+    data class Derived(val closed: List<Session>, val open: List<Session>, val safePoint: Long)
+
+    // UsageEvents.Event's codes (ScreenTimeTest checks them against Android's).
+    const val EV_RESUMED = 1          // ACTIVITY_RESUMED, was MOVE_TO_FOREGROUND
+    const val EV_PAUSED = 2           // ACTIVITY_PAUSED, was MOVE_TO_BACKGROUND
+    const val EV_SCREEN_OFF = 16      // SCREEN_NON_INTERACTIVE (Android 9+)
+    const val EV_STOPPED = 23         // ACTIVITY_STOPPED (Android 10+)
+    const val EV_SHUTDOWN = 26        // DEVICE_SHUTDOWN (Android 10+)
+    const val EV_STARTUP = 27         // DEVICE_STARTUP (Android 10+)
+
+    /** An app back on screen within this long counts as one session (moving between its own screens). */
+    const val MERGE_GAP_MS = 2_000L
+
+    /** Sessions shorter than this are dropped: splash screens and apps passing straight through. */
+    const val MIN_SESSION_MS = 1_000L
+
+    /** No session is longer than this: a lost "left the screen" event can't make one run forever. */
+    const val MAX_SESSION_MS = 24 * 3_600_000L
+
+    /**
+     * The sessions in a run of usage events (sorted or not), read up to
+     * `until`. An app is on screen from when one of its screens is resumed
+     * until none is; back within MERGE_GAP_MS, it's one session. The screen
+     * going off or the phone shutting down ends everything; a startup with
+     * no shutdown before it ends everything at the last event seen. Before
+     * Android 10 (`multiResume` false) only one app can be resumed, so
+     * another one coming on screen ends it even if its pause got lost.
+     * `ignore`d apps (the launcher, the system UI) make no sessions. A pause
+     * with nothing resumed (its start was before this run) is ignored: that
+     * session was read last time.
+     */
+    fun sessionsFrom(events: List<UsageEv>, until: Long, ignore: Set<String>, multiResume: Boolean): Derived {
+        class Live(val start: Long) {
+            val screens = mutableSetOf<String>()
+            var left = 0L   // when its last screen left, 0 while one is on
+        }
+        val live = linkedMapOf<String, Live>()
+        val closed = mutableListOf<Session>()
+
+        fun close(pkg: String, at: Long) {
+            val l = live.remove(pkg) ?: return
+            val end = if (l.left != 0L) minOf(l.left, at) else at
+            closed += Session(pkg, l.start, end)
+        }
+        fun closeAll(at: Long) { for (pkg in live.keys.toList()) close(pkg, at) }
+
+        var last = Long.MIN_VALUE
+        for (e in events.sortedBy { it.time }) {
+            if (e.time > until) break
+            when (e.type) {
+                EV_RESUMED -> {
+                    if (!multiResume) for (pkg in live.keys.toList()) if (pkg != e.pkg) close(pkg, e.time)
+                    if (e.pkg !in ignore) {
+                        var l = live[e.pkg]
+                        // Gone longer than the gap: that session's over, a new one starts.
+                        if (l != null && l.left != 0L && e.time - l.left > MERGE_GAP_MS) { close(e.pkg, l.left); l = null }
+                        if (l == null) { l = Live(e.time); live[e.pkg] = l }
+                        l.screens += e.cls ?: ""
+                        l.left = 0
+                    }
+                }
+                EV_PAUSED, EV_STOPPED -> {
+                    val l = live[e.pkg]
+                    if (l != null && l.screens.remove(e.cls ?: "") && l.screens.isEmpty()) l.left = e.time
+                }
+                EV_SCREEN_OFF, EV_SHUTDOWN -> closeAll(e.time)
+                EV_STARTUP -> if (last != Long.MIN_VALUE) closeAll(last)
+            }
+            last = e.time
+        }
+        // Left the screen by now: closed. Still on it: open.
+        for ((pkg, l) in live.toList()) if (l.left != 0L) close(pkg, l.left)
+        val open = live.map { (pkg, l) -> Session(pkg, l.start, until) }
+        val safePoint = (open.map { it.start } + until).min()
+        return Derived(tidy(closed), open, safePoint)
+    }
+
+    /** Sessions too short dropped, too long cut. */
+    private fun tidy(sessions: List<Session>): List<Session> =
+        sessions.filter { it.end - it.start >= MIN_SESSION_MS }
+            .map { if (it.end - it.start > MAX_SESSION_MS) it.copy(end = it.start + MAX_SESSION_MS) else it }
+
+    /**
+     * Each app's sessions joined where they overlap or are within `gapMs`
+     * of each other; different apps never join. Storing the same time
+     * twice changes nothing, so reading events again is harmless. None
+     * grows past MAX_SESSION_MS (reading a day relies on that): past it, the
+     * rest is a session of its own.
+     */
+    fun mergeSessions(sessions: List<Session>, gapMs: Long = MERGE_GAP_MS): List<Session> =
+        sessions.groupBy { it.pkg }.flatMap { (_, own) ->
+            val out = mutableListOf<Session>()
+            for (s in own.sortedBy { it.start }) {
+                val prev = out.lastOrNull()
+                when {
+                    prev == null || s.start - prev.end > gapMs -> out += s
+                    s.end <= prev.end -> {}   // inside it already
+                    maxOf(prev.end, s.end) - prev.start <= MAX_SESSION_MS -> out[out.size - 1] = prev.copy(end = s.end)
+                    else -> out += Session(s.pkg, maxOf(s.start, prev.end), s.end)
+                }
+            }
+            out
+        }.sortedWith(compareBy({ it.start }, { it.pkg }))
+
+    /** How far back a first sync reads: as far as Android might still have. */
+    const val HISTORY_BACKFILL_MS = 14 * 86_400_000L
+
+    /** A sync reads from a little before where the last one left off, for events written late. */
+    const val HISTORY_OVERLAP_MS = 5 * 60_000L
+
+    /**
+     * Where a sync reads events from: a little before the last one's safe
+     * point, or as far back as Android keeps them on the first; never
+     * further back than that.
+     */
+    fun syncFrom(safePoint: Long?, now: Long): Long {
+        val floor = now - HISTORY_BACKFILL_MS
+        return if (safePoint == null) floor else maxOf(floor, safePoint - HISTORY_OVERLAP_MS)
+    }
+
+    /** Whether a sync is due: none yet, or at least `gapMs` since the last (by time since boot, or a restart since). */
+    fun syncDue(lastElapsed: Long, lastBoot: Int, nowElapsed: Long, boot: Int, gapMs: Long): Boolean =
+        lastElapsed == 0L || lastBoot != boot || nowElapsed < lastElapsed || nowElapsed - lastElapsed >= gapMs
+
+    /**
+     * The wall clock was moved: Android moves its stored events with it, so
+     * the history recorded since this boot (the only part a move within it
+     * can be measured for) moves too. Returns (from, by): sessions starting
+     * at or after `from` shift `by` ms; null when the clock didn't move.
+     */
+    fun historyShift(anchor: ClockAnchor?, wall: Long, elapsed: Long, boot: Int): Pair<Long, Long>? {
+        val moved = clockMoved(anchor, wall, elapsed, boot)
+        if (moved == 0L || anchor == null) return null
+        return (anchor.wall - anchor.elapsed) to moved
+    }
+
+    /** A local day's start and end (ms): not always 24 hours apart (daylight saving), nor always at 00:00. */
+    fun dayBounds(day: java.time.LocalDate, zone: java.time.ZoneId): Pair<Long, Long> =
+        day.atStartOfDay(zone).toInstant().toEpochMilli() to
+            day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /** The sessions cut to `from`..`to`, those outside it dropped. */
+    fun clip(sessions: List<Session>, from: Long, to: Long): List<Session> =
+        sessions.mapNotNull { s ->
+            val a = maxOf(s.start, from)
+            val b = minOf(s.end, to)
+            if (b > a) Session(s.pkg, a, b) else null
+        }
+
+    /** Spans covered by any of the sessions, joined: two apps side by side count once. */
+    private fun union(spans: List<Pair<Long, Long>>): List<Pair<Long, Long>> {
+        val out = mutableListOf<Pair<Long, Long>>()
+        for ((a, b) in spans.sortedBy { it.first }) {
+            val prev = out.lastOrNull()
+            if (prev != null && a <= prev.second) out[out.size - 1] = prev.first to maxOf(prev.second, b)
+            else out += a to b
+        }
+        return out
+    }
+
+    /** Screen time between `from` and `to`: time with any app on screen (split screen counts once). */
+    fun screenTimeMs(sessions: List<Session>, from: Long, to: Long): Long =
+        union(clip(sessions, from, to).map { it.start to it.end }).sumOf { it.second - it.first }
+
+    /**
+     * A day cut into buckets of `bucketMs`, for the chart: per bucket, the
+     * share of it (0..1) spent in `limited` apps, and the share spent in
+     * others while no limited one was on screen, so the two never add up to
+     * more than the bucket. `known` buckets end where the data does (`upTo`,
+     * now for today): the rest of the day hasn't happened, and the slice
+     * going on is a share of its part so far.
+     */
+    data class Buckets(val limited: FloatArray, val other: FloatArray, val known: Int)
+
+    fun buckets(sessions: List<Session>, from: Long, to: Long, bucketMs: Long, limited: Set<String>, upTo: Long): Buckets {
+        val n = ((to - from + bucketMs - 1) / bucketMs).toInt()
+        val lim = FloatArray(n)
+        val oth = FloatArray(n)
+        val day = clip(sessions, from, to)
+        val limSpans = union(day.filter { it.pkg in limited }.map { it.start to it.end })
+        val allSpans = union(day.map { it.start to it.end })
+        fun spread(spans: List<Pair<Long, Long>>, into: FloatArray, sign: Float) {
+            for ((a, b) in spans) {
+                var i = ((a - from) / bucketMs).toInt()
+                while (i < n) {
+                    val bs = from + i * bucketMs
+                    val be = minOf(bs + bucketMs, to)
+                    if (bs >= b) break
+                    val overlap = minOf(b, be) - maxOf(a, bs)
+                    // The slice going on now is a share of what's happened of it so far.
+                    val lived = if (upTo > bs && upTo < be) upTo - bs else be - bs
+                    if (overlap > 0) into[i] = minOf(1f, into[i] + sign * overlap / lived.toFloat())
+                    i++
+                }
+            }
+        }
+        spread(limSpans, lim, 1f)
+        // Others: all screen time, less the limited apps' (which is inside it).
+        spread(allSpans, oth, 1f)
+        for (i in 0 until n) oth[i] = maxOf(0f, oth[i] - lim[i])
+        val known = when {
+            upTo >= to -> n
+            upTo <= from -> 0
+            else -> ((upTo - from + bucketMs - 1) / bucketMs).toInt()
+        }
+        return Buckets(lim, oth, known)
+    }
+
+    /** Each app's time between `from` and `to`, most first (apps side by side each count in full). */
+    fun appTotals(sessions: List<Session>, from: Long, to: Long): List<Pair<String, Long>> =
+        clip(sessions, from, to).groupBy { it.pkg }
+            .map { (pkg, own) -> pkg to union(own.map { it.start to it.end }).sumOf { it.second - it.first } }
+            .filter { it.second > 0 }
+            .sortedWith(compareByDescending<Pair<String, Long>> { it.second }.thenBy { it.first })
+
+    /** The busiest hour of a day: when it starts, and the screen time in it. */
+    data class Peak(val start: Long, val ms: Long)
+
+    /**
+     * The hour of the day (on the clock: 9 to 10 PM) with the most screen
+     * time, the earliest on a tie; null for a day with none. On a day that
+     * goes back an hour, the repeated hour is two hours here.
+     */
+    fun peakHour(sessions: List<Session>, day: java.time.LocalDate, zone: java.time.ZoneId): Peak? {
+        val (from, to) = dayBounds(day, zone)
+        var best: Peak? = null
+        var t = day.atStartOfDay(zone)
+        while (t.toInstant().toEpochMilli() < to) {
+            val next = t.plusHours(1)
+            val a = maxOf(from, t.toInstant().toEpochMilli())
+            val b = minOf(to, next.toInstant().toEpochMilli())
+            val ms = screenTimeMs(sessions, a, b)
+            if (ms > 0 && (best == null || ms > best.ms)) best = Peak(a, ms)
+            t = next
+        }
+        return best
+    }
+
+    /** "Today", "Yesterday", or "Sun, 8 Nov" (with the year when it isn't this one). */
+    fun dayTitle(day: java.time.LocalDate, today: java.time.LocalDate): String = when (day) {
+        today -> "Today"
+        today.minusDays(1) -> "Yesterday"
+        else -> day.format(java.time.format.DateTimeFormatter.ofPattern(
+            if (day.year == today.year) "EEE, d MMM" else "EEE, d MMM yyyy", java.util.Locale.ENGLISH))
+    }
+
+    /** Screen time in words: "2 hours 5 minutes", "45 minutes", "Under 1 minute", "0 minutes". */
+    fun fmtScreenTime(ms: Long): String {
+        if (ms <= 0) return "0 minutes"
+        if (ms < 60_000) return "Under 1 minute"
+        val min = ms / 60_000   // rounded down: never more than was used
+        fun unit(n: Long, one: String) = if (n == 1L) "1 $one" else "$n ${one}s"
+        val h = min / 60
+        val m = min % 60
+        return listOfNotNull(if (h > 0) unit(h, "hour") else null, if (m > 0) unit(m, "minute") else null).joinToString(" ")
+    }
+
+    /** "9 PM" for the hour starting at `start`. */
+    fun fmtHour(start: Long, zone: java.time.ZoneId): String =
+        java.time.Instant.ofEpochMilli(start).atZone(zone)
+            .format(java.time.format.DateTimeFormatter.ofPattern("h a", java.util.Locale.ENGLISH))
+
+    /** What the home screen's top card shows: the stats, a card asking for usage access, or nothing (asked, and dismissed). */
+    enum class UsageCard { STATS, ASK, NONE }
+
+    fun usageCard(granted: Boolean, dismissed: Boolean): UsageCard = when {
+        granted -> UsageCard.STATS
+        dismissed -> UsageCard.NONE
+        else -> UsageCard.ASK
+    }
+
+    /** The file the history lives in, in the app's databases; left out of Auto Backup (single device, and it grows past the quota). */
+    const val HISTORY_DB = "history.db"
+
     // ---- persistence: JSON blobs in SharedPreferences ----
     //
     //   rules:      {"com.instagram.android": {"allow": 5, "window": 120}, ...}
@@ -894,6 +1187,14 @@ object Storage {
 
     fun setUsageReminderDismissed(ctx: Context) {
         prefs(ctx).edit().putBoolean("usageReminderDismissed", true).apply()
+    }
+
+    // Same, for the home screen's "allow usage access for your screen time" card.
+    fun usageCardDismissed(ctx: Context) =
+        prefs(ctx).getBoolean("usageCardDismissed", false)
+
+    fun setUsageCardDismissed(ctx: Context) {
+        prefs(ctx).edit().putBoolean("usageCardDismissed", true).apply()
     }
 
     fun setOnboardingSeen(ctx: Context) {

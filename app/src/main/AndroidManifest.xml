@@ -138,6 +138,12 @@
             android:exported="false"
             android:label="Strict mode" />
 
+        <!-- Screen time in full, from the home screen's card. -->
+        <activity
+            android:name=".UsageActivity"
+            android:exported="false"
+            android:label="Screen time" />
+
         <!-- Target of the "Contact support" launcher shortcut -->
         <activity
             android:name=".SupportActivity"
