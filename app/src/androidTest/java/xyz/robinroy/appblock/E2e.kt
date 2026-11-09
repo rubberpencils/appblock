@@ -7,6 +7,7 @@ import android.util.Log
 import android.widget.EditText
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.StaleObjectException
@@ -333,6 +334,21 @@ object E2e {
 
     fun appears(selector: BySelector, timeout: Long = WAIT): Boolean =
         device.wait(Until.hasObject(selector), timeout)
+
+    /**
+     * Like waitForFresh, scrolling the page down while it isn't there: for
+     * what can sit below the fold, like a row far down a long list.
+     */
+    fun scrollTo(selector: BySelector, timeout: Long = WAIT): UiObject2 {
+        val until = System.currentTimeMillis() + timeout
+        while (true) {
+            if (android.os.Build.VERSION.SDK_INT >= 34) uiAutomation.clearCache()
+            device.findObject(selector)?.let { return it }
+            if (System.currentTimeMillis() > until) throw AssertionError("not on screen after ${timeout}ms, scrolled: $selector")
+            try { device.findObject(By.scrollable(true))?.scroll(Direction.DOWN, 0.6f) } catch (e: StaleObjectException) {}
+            Thread.sleep(250)
+        }
+    }
 
     // ---- the limit dialog ----
 

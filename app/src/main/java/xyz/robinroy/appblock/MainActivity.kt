@@ -81,6 +81,12 @@ class MainActivity : Activity() {
         })
     }
 
+    /** A tap outside a chart's card puts the chart back (Readout). */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        Readout.outside(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onResume() {
         super.onResume()
         // A cooldown that ran out, or strict mode ended in safe mode, shows now.

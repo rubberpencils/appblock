@@ -3,6 +3,7 @@ package xyz.robinroy.appblock
 import android.app.usage.UsageEvents
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -14,7 +15,9 @@ import xyz.robinroy.appblock.Storage.EV_STARTUP
 import xyz.robinroy.appblock.Storage.EV_STOPPED
 import xyz.robinroy.appblock.Storage.Session
 import xyz.robinroy.appblock.Storage.UsageEv
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 
 /**
@@ -353,5 +356,244 @@ class ScreenTimeTest {
         assertEquals(Storage.UsageCard.STATS, Storage.usageCard(granted = true, dismissed = true))
         assertEquals(Storage.UsageCard.ASK, Storage.usageCard(granted = false, dismissed = false))
         assertEquals(Storage.UsageCard.NONE, Storage.usageCard(granted = false, dismissed = true))
+    }
+
+    // ---- apps left out ----
+
+    @Test
+    fun `apps not counted are left out of screen time, the rest kept`() {
+        val s = listOf(sess(yt, 0, 60), sess("maps", 30, 200), sess(ig, 300, 330))
+        assertEquals(s, Storage.counted(s, emptySet()))
+        val counted = Storage.counted(s, setOf("maps"))
+        assertEquals(listOf(sess(yt, 0, 60), sess(ig, 300, 330)), counted)
+        // Maps on screen beside YouTube no longer stretches the day's time.
+        assertEquals(90_000L, Storage.screenTimeMs(counted, 0.s, 1000.s))
+        assertEquals(230_000L, Storage.screenTimeMs(s, 0.s, 1000.s))
+    }
+
+    // ---- the calendar ----
+
+    @Test
+    fun `a month in weeks, starting on the locale's day`() {
+        // November 2026 starts on a Sunday and has 30 days.
+        val sunday = Storage.monthGrid(YearMonth.of(2026, 11), DayOfWeek.SUNDAY)
+        assertEquals(5, sunday.size)
+        assertEquals(LocalDate.of(2026, 11, 1), sunday[0][0])
+        assertTrue(sunday.all { it.size == 7 })
+        assertEquals(LocalDate.of(2026, 11, 30), sunday[4][1])
+        assertEquals(List(5) { null }, sunday[4].drop(2))
+
+        val monday = Storage.monthGrid(YearMonth.of(2026, 11), DayOfWeek.MONDAY)
+        assertEquals(6, monday.size)   // Sunday the 1st sits alone at the end of a first row
+        assertEquals(List(6) { null }, monday[0].take(6))
+        assertEquals(LocalDate.of(2026, 11, 1), monday[0][6])
+        assertEquals(LocalDate.of(2026, 11, 30), monday[5][0])
+        // Every day once, in order.
+        assertEquals((1..30).map { LocalDate.of(2026, 11, it) }, monday.flatten().filterNotNull())
+        // February 2026 from a Sunday: exactly four rows.
+        assertEquals(4, Storage.monthGrid(YearMonth.of(2026, 2), DayOfWeek.SUNDAY).size)
+    }
+
+    @Test
+    fun `the calendar offers the history's days, up to today`() {
+        val today = LocalDate.of(2026, 11, 9)
+        val first = LocalDate.of(2026, 10, 20)
+        assertTrue(Storage.pickable(today, first, today))
+        assertTrue(Storage.pickable(first, first, today))
+        assertFalse(Storage.pickable(first.minusDays(1), first, today))
+        assertFalse(Storage.pickable(today.plusDays(1), first, today))
+        // No history yet: today alone.
+        assertTrue(Storage.pickable(today, null, today))
+        assertFalse(Storage.pickable(today.minusDays(1), null, today))
+        // A history that starts "after" today (the clock went back): today still.
+        assertTrue(Storage.pickable(today, today.plusDays(3), today))
+
+        assertTrue(Storage.monthPickable(YearMonth.of(2026, 10), first, today))
+        assertTrue(Storage.monthPickable(YearMonth.of(2026, 11), first, today))
+        assertFalse(Storage.monthPickable(YearMonth.of(2026, 9), first, today))
+        assertFalse(Storage.monthPickable(YearMonth.of(2026, 12), first, today))
+        assertFalse(Storage.monthPickable(YearMonth.of(2026, 10), null, today))
+    }
+
+    // ---- one app's patterns ----
+
+    @Test
+    fun `a range is its last days, never before the history starts`() {
+        val today = LocalDate.of(2026, 11, 9)
+        val longAgo = LocalDate.of(2025, 1, 1)
+        assertEquals(LocalDate.of(2026, 11, 3) to today, Storage.rangeDays(Storage.StatsRange.WEEK, longAgo, today))
+        assertEquals(LocalDate.of(2026, 10, 11) to today, Storage.rangeDays(Storage.StatsRange.MONTH, longAgo, today))
+        assertEquals(longAgo to today, Storage.rangeDays(Storage.StatsRange.ALL, longAgo, today))
+        // Four days of history: "30 days" is those four.
+        val recent = LocalDate.of(2026, 11, 6)
+        assertEquals(recent to today, Storage.rangeDays(Storage.StatsRange.MONTH, recent, today))
+        assertEquals(today to today, Storage.rangeDays(Storage.StatsRange.ALL, null, today))
+    }
+
+    @Test
+    fun `an app's week - average, most used day, opens, longest`() {
+        val first = LocalDate.of(2026, 6, 1)
+        val last = first.plusDays(6)
+        fun at(d: Int, h: Int, m: Int) = first.plusDays(d.toLong()).atTime(h, m).atZone(zone).toInstant().toEpochMilli()
+        val s = listOf(
+            Session(yt, at(0, 9, 0), at(0, 9, 30)),     // Mon: 30 min
+            Session(yt, at(2, 21, 0), at(2, 22, 0)),    // Wed: 60 min, in two sessions
+            Session(yt, at(2, 22, 10), at(2, 22, 20)),  //      +10
+            Session(yt, at(6, 21, 30), at(6, 21, 50)),  // Sun: 20 min
+        )
+        val upTo = Storage.dayBounds(last, zone).second
+        val st = Storage.appStats(s, first, last, zone, upTo)
+        assertEquals(7, st.days)
+        assertEquals(120.min, st.totalMs)
+        assertEquals(120.min / 7, st.avgMs)
+        assertEquals(first.plusDays(2), st.topDay)
+        assertEquals(70.min, st.topDayMs)
+        assertEquals(4, st.opens)
+        assertEquals(30.min, st.avgSessionMs)
+        assertEquals(60.min, st.longestMs)
+        // 9 PM: Wednesday's hour and Sunday's 20 minutes.
+        assertEquals(21, st.peakHour)
+        assertEquals(80.min, st.hours[21])
+        assertEquals(30.min, st.hours[9])
+        assertEquals(10.min, st.hours[22])
+        assertEquals(st.totalMs, st.hours.sum())
+    }
+
+    @Test
+    fun `sessions over the edges count their part inside the range`() {
+        val first = LocalDate.of(2026, 6, 1)
+        val last = first.plusDays(1)
+        val (from, to) = Storage.dayBounds(first, zone).first to Storage.dayBounds(last, zone).second
+        // Opened before the range, on screen 20 minutes into it; and one going past its end.
+        val s = listOf(Session(yt, from - 10.min, from + 20.min), Session(yt, to - 5.min, to + 30.min))
+        val st = Storage.appStats(s, first, last, zone, to + 60.min)
+        assertEquals(25.min, st.totalMs)
+        assertEquals("opened before the range isn't opened in it", 1, st.opens)
+        assertEquals("nor in the time per open", 5.min, st.avgSessionMs)
+        assertEquals(20.min, st.longestMs)
+        assertEquals(20.min, st.hours[0])
+        assertEquals(5.min, st.hours[23])
+    }
+
+    @Test
+    fun `today counts so far, and the most used day is the latest on a tie`() {
+        val today = LocalDate.of(2026, 6, 2)
+        val (todayStart, _) = Storage.dayBounds(today, zone)
+        val now = todayStart + 10 * 60.min
+        // 30 min yesterday, 30 today, and an open session running past now.
+        val s = listOf(Session(yt, todayStart - 120.min, todayStart - 90.min), Session(yt, todayStart + 60.min, todayStart + 90.min),
+            Session(yt, now - 5.min, now + 60.min))
+        val st = Storage.appStats(s, today.minusDays(1), today, zone, now)
+        assertEquals(65.min, st.totalMs)
+        assertEquals(today, st.topDay)
+        val tie = Storage.appStats(s.take(2), today.minusDays(1), today, zone, now)
+        assertEquals(today, tie.topDay)
+        assertEquals(30.min, tie.avgMs)
+    }
+
+    @Test
+    fun `an app never used has no peak, no most used day, nothing to average`() {
+        val day = LocalDate.of(2026, 6, 1)
+        val st = Storage.appStats(emptyList(), day, day.plusDays(6), zone, Long.MAX_VALUE)
+        assertEquals(0L, st.totalMs)
+        assertEquals(0L, st.avgMs)
+        assertNull(st.topDay)
+        assertNull(st.peakHour)
+        assertEquals(0, st.opens)
+        assertEquals(0L, st.avgSessionMs)
+        assertEquals(0L, st.longestMs)
+    }
+
+    @Test
+    fun `hours are clock hours, on the day the clocks go back too`() {
+        val day = LocalDate.of(2026, 10, 25)   // London: 01:00-02:00 happens twice
+        val (from, _) = Storage.dayBounds(day, zone)
+        // Both 1 AMs, 30 minutes each: one clock hour, 60 minutes.
+        val s = listOf(Session(yt, from + 60.min, from + 90.min), Session(yt, from + 120.min, from + 150.min))
+        val st = Storage.appStats(s, day, day, zone, Long.MAX_VALUE)
+        assertEquals(60.min, st.hours[1])
+        assertEquals(1, st.peakHour)
+        assertEquals(1, st.days)
+    }
+
+    @Test
+    fun `peak hours and time per open in words`() {
+        assertEquals("12 AM to 1 AM", Storage.hourRange(0))
+        assertEquals("11 AM to 12 PM", Storage.hourRange(11))
+        assertEquals("12 PM to 1 PM", Storage.hourRange(12))
+        assertEquals("9 PM to 10 PM", Storage.hourRange(21))
+        assertEquals("11 PM to 12 AM", Storage.hourRange(23))
+        assertEquals("Under a minute each", Storage.perOpenText(59_000))
+        assertEquals("About 1 minute each", Storage.perOpenText(60_000))
+        assertEquals("About 1 hour 5 minutes each", Storage.perOpenText(65.min))
+    }
+
+    // ---- the Usage page's list ----
+
+    private val apps = listOf(
+        Storage.AppUse("b.chrome", "Chrome", 30.min), Storage.AppUse("a.yt", "YouTube", 90.min),
+        Storage.AppUse("c.maps", "maps", 30.min), Storage.AppUse("d.gmail", "Gmail", 5.min))
+
+    @Test
+    fun `search finds a name with the words in it, any case`() {
+        assertTrue(Storage.matches("YouTube", ""))
+        assertTrue(Storage.matches("YouTube", "  "))
+        assertTrue(Storage.matches("YouTube", "tube"))
+        assertTrue(Storage.matches("YouTube", " YOU "))
+        assertFalse(Storage.matches("YouTube", "maps"))
+    }
+
+    @Test
+    fun `sorted by time, most first, ties by name`() {
+        assertEquals(listOf("YouTube", "Chrome", "maps", "Gmail"),
+            Storage.sortApps(apps, Storage.UsageSort.TIME, descending = true).map { it.label })
+        assertEquals(listOf("Gmail", "Chrome", "maps", "YouTube"),
+            Storage.sortApps(apps, Storage.UsageSort.TIME, descending = false).map { it.label })
+    }
+
+    @Test
+    fun `sorted by name, any case, either way round`() {
+        assertEquals(listOf("Chrome", "Gmail", "maps", "YouTube"),
+            Storage.sortApps(apps, Storage.UsageSort.NAME, descending = false).map { it.label })
+        assertEquals(listOf("YouTube", "maps", "Gmail", "Chrome"),
+            Storage.sortApps(apps, Storage.UsageSort.NAME, descending = true).map { it.label })
+    }
+
+    @Test
+    fun `the apps with no use that day, by name`() {
+        val installed = mapOf("a.yt" to "YouTube", "z.cam" to "camera", "y.calc" to "Calculator", "b.chrome" to "Chrome")
+        val none = Storage.noUsage(installed, setOf("a.yt", "b.chrome", "q.uninstalled"))
+        assertEquals(listOf("Calculator", "camera"), none.map { it.label })
+        assertTrue(none.all { it.ms == 0L })
+        assertEquals(emptyList<Storage.AppUse>(), Storage.noUsage(installed, installed.keys))
+    }
+
+    @Test
+    fun `a chart's minute marks are round, at most three, up to the peak`() {
+        assertEquals(emptyList<Int>(), Storage.niceTicks(0f, 15))
+        assertEquals(listOf(1), Storage.niceTicks(0.3f, 15))
+        assertEquals(listOf(1, 2, 3), Storage.niceTicks(2.5f, 15))
+        assertEquals(listOf(2, 4), Storage.niceTicks(3.2f, 15))
+        assertEquals(listOf(5, 10), Storage.niceTicks(9f, 15))
+        assertEquals(listOf(5, 10, 15), Storage.niceTicks(12f, 15))
+        assertEquals(listOf(5, 10, 15), Storage.niceTicks(15f, 15))
+        // Never past what a slice can hold.
+        assertEquals(listOf(5, 10, 15), Storage.niceTicks(16f, 15))
+        // An hour's worth a day.
+        assertEquals(listOf(10, 20, 30), Storage.niceTicks(24f, 60))
+        assertEquals(listOf(20, 40, 60), Storage.niceTicks(50f, 60))
+        assertEquals("5 min", Storage.fmtTick(5))
+    }
+
+    @Test
+    fun `a slice of the day in words`() {
+        val day = LocalDate.of(2026, 6, 1)
+        fun at(h: Int, m: Int) = day.atTime(h, m).atZone(zone).toInstant().toEpochMilli()
+        assertEquals("9:15 to 9:30 PM", Storage.sliceRange(at(21, 15), at(21, 30), zone))
+        assertEquals("11:45 AM to 12:00 PM", Storage.sliceRange(at(11, 45), at(12, 0), zone))
+        assertEquals("11:45 PM to 12:00 AM", Storage.sliceRange(at(23, 45), at(23, 45) + 15.min, zone))
+        assertEquals("12:00 to 12:15 AM", Storage.sliceRange(at(0, 0), at(0, 15), zone))
+        // The slice going on now.
+        assertEquals("11:15 PM to now", Storage.sliceRange(at(23, 15), at(23, 15), zone, ongoing = true))
     }
 }

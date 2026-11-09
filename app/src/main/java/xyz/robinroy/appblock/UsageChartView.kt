@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.view.MotionEvent
 import android.view.View
 import java.time.Instant
 import java.time.ZoneId
@@ -17,7 +18,10 @@ import java.time.ZoneId
  * the day's shape shows; the totals beside it carry the size. The curve is
  * monotone (it never overshoots a slice), so it shows no peak that wasn't
  * there. The day's remaining hours, not yet lived, are left blank; labels
- * mark midnight, 6 AM, noon and 6 PM by the clock.
+ * mark midnight, 6 AM, noon and 6 PM by the clock. On the right, the minutes
+ * of each slice spent on screen, in round steps (Storage.niceTicks), the
+ * height scaled to the top one. A tap or a drag on it reads a slice off
+ * exactly (Readout); `single` is one app's chart, one series, no names.
  */
 class UsageChartView(context: Context) : View(context) {
     private var limited = FloatArray(0)
@@ -28,6 +32,22 @@ class UsageChartView(context: Context) : View(context) {
     private var bucketMs = 1L
     private var zone: ZoneId = ZoneId.systemDefault()
     private var reveal = 1f
+    private var upTo = 0L
+    private var single = false
+    private var picked: Int? = null
+
+    /** What it says to TalkBack (and the tests) with nothing picked; a pick says its values. */
+    var summary: String = ""
+        set(v) { field = v; if (picked == null) contentDescription = v }
+    private var plotW = 0f
+    private val bubble = Readout.Bubble(context)
+    private val touch = Readout.Touch(this) { x -> pick(x) }
+    private val marker = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = context.getColor(R.color.ink)
+        strokeWidth = Ui.dpf(context, 1f)
+    }
+    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.surface) }
+    private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private fun fill(color: Int, alpha: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         this.color = context.getColor(color)
@@ -54,8 +74,12 @@ class UsageChartView(context: Context) : View(context) {
         typeface = Ui.sans(context)
     }
 
-    fun set(b: Storage.Buckets, from: Long, to: Long, bucketMs: Long, zone: ZoneId, animate: Boolean) {
+    fun set(b: Storage.Buckets, from: Long, to: Long, bucketMs: Long, zone: ZoneId, animate: Boolean,
+            upTo: Long = to, single: Boolean = false) {
         this.bucketMs = bucketMs
+        this.upTo = upTo
+        this.single = single
+        unpick()
         limited = b.limited
         other = b.other
         known = b.known
@@ -72,15 +96,63 @@ class UsageChartView(context: Context) : View(context) {
         } else { reveal = 1f; invalidate() }
     }
 
+    override fun onTouchEvent(e: MotionEvent): Boolean = if (known == 0) super.onTouchEvent(e) else touch.handle(e)
+
+    /** The slice under `x`, if the day has got that far. */
+    private fun pick(x: Float) {
+        if (plotW <= 0f || known == 0) return
+        val t = from + ((x / plotW).coerceIn(0f, 0.9999f) * (to - from)).toLong()
+        val i = ((t - from) / bucketMs).toInt().coerceIn(0, known - 1)
+        if (picked != i) {
+            picked = i
+            performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            invalidate()
+        }
+        Readout.showing(parent as? View ?: this) { unpick() }
+    }
+
+    /** The pick taken away: a new day, the calendar opening. */
+    fun unpick() {
+        if (picked == null) return
+        picked = null
+        Readout.hidden(parent as? View ?: this)
+        contentDescription = summary
+        invalidate()
+    }
+
+    /** A slice's time on screen, exactly: its share of the part of it lived. */
+    private fun sliceMs(share: Float, i: Int): Long {
+        val start = from + i * bucketMs
+        val lived = minOf(start + bucketMs, to, maxOf(upTo, start)) - start
+        return Math.round(share.toDouble() * lived)
+    }
+
     override fun onDraw(canvas: Canvas) {
         val n = limited.size
         if (n == 0 || to <= from) return
         val labelH = Ui.dpf(context, 20f)
-        val top = Ui.dpf(context, 6f)
+        val top = Ui.dpf(context, 8f)
         val bottom = height - labelH
-        val w = width.toFloat()
         val plotH = bottom - top
+        // The minute marks: from the day's busiest slice, in minutes.
+        val bucketMin = (bucketMs / 60_000L).toInt().coerceAtLeast(1)
+        // Each slice's minutes on screen: the one going on now, its minutes so far.
+        val limMin = FloatArray(n) { sliceMs(limited[it], it) / 60_000f }
+        val othMin = FloatArray(n) { sliceMs(other[it], it) / 60_000f }
+        var peak = 0f
+        for (i in 0 until known.coerceAtMost(n)) peak = maxOf(peak, limMin[i], othMin[i])
+        val ticks = Storage.niceTicks(peak, bucketMin)
+        val gutter = label.measureText(Storage.fmtTick(bucketMin)) + Ui.dpf(context, 8f)
+        val w = width - gutter
+        plotW = w
         fun x(t: Long) = (t - from).toFloat() / (to - from) * w
+        val scaleMin = (ticks.lastOrNull() ?: bucketMin).toFloat()
+        fun y(minutes: Float) = bottom - minutes / scaleMin * plotH
+        for (m in ticks) {
+            val gy = bottom - m / scaleMin * plotH
+            canvas.drawLine(0f, gy, w, gy, grid)
+            canvas.drawText(Storage.fmtTick(m), w + Ui.dpf(context, 6f), gy + label.textSize * 0.35f, label)
+        }
 
         // Gridlines and labels at midnight, 6 AM, noon, 6 PM.
         val day = Instant.ofEpochMilli(from).atZone(zone).toLocalDate()
@@ -99,16 +171,16 @@ class UsageChartView(context: Context) : View(context) {
 
         val shown = (known * reveal).toInt().coerceIn(0, n)
         if (shown == 0) return
-        var peak = 0f
-        for (i in 0 until known.coerceAtMost(n)) peak = maxOf(peak, limited[i], other[i])
         if (peak <= 0f) return
         fun series(values: FloatArray, fillPaint: Paint, line: Paint) {
+            // A series with nothing in it isn't drawn: no line along the baseline.
+            if ((0 until known.coerceAtMost(n)).none { values[it] > 0f }) return
             val xs = FloatArray(shown + 2)
             val ys = FloatArray(shown + 2)
             xs[0] = 0f; ys[0] = bottom
             for (i in 0 until shown) {
                 xs[i + 1] = x(minOf(to, from + i * bucketMs + bucketMs / 2))
-                ys[i + 1] = bottom - values[i] / peak * plotH
+                ys[i + 1] = y(values[i])
             }
             // The whole day: back to the baseline at its end. Today: cut off where now is.
             xs[shown + 1] = x(minOf(to, from + shown * bucketMs))
@@ -117,8 +189,29 @@ class UsageChartView(context: Context) : View(context) {
             canvas.drawPath(path, fillPaint)
             canvas.drawPath(topEdge, line)
         }
-        series(other, otherFill, otherLine)
-        series(limited, limitedFill, limitedLine)
+        series(othMin, otherFill, otherLine)
+        series(limMin, limitedFill, limitedLine)
+
+        // The slice picked: a line through it, a dot on each series, and its exact values.
+        val i = picked ?: return
+        if (i >= known) return
+        val start = from + i * bucketMs
+        val end = minOf(to, start + bucketMs, maxOf(upTo, start + 1))
+        val px = x(minOf(to, start + bucketMs / 2))
+        canvas.drawLine(px, top, px, bottom, marker)
+        val rows = mutableListOf<Pair<Int?, String>>()
+        fun mark(values: FloatArray, minutes: FloatArray, color: Int, name: String) {
+            dot.color = context.getColor(color)
+            canvas.drawCircle(px, y(minutes[i]), Ui.dpf(context, 5f), ring)
+            canvas.drawCircle(px, y(minutes[i]), Ui.dpf(context, 3.5f), dot)
+            val text = Storage.fmtExact(sliceMs(values[i], i))
+            rows += if (single) (null to text) else (color to "$name: $text")
+        }
+        if (single) mark(limited, limMin, R.color.accent, "")
+        else { mark(limited, limMin, R.color.accent, "Limited apps"); mark(other, othMin, R.color.chart_other_line, "Other apps") }
+        val range = Storage.sliceRange(start, end, zone, ongoing = start + bucketMs > upTo && upTo < to)
+        bubble.draw(canvas, px, w, range, rows)
+        contentDescription = "$range: " + rows.joinToString(", ") { it.second }
     }
 
     private val topEdge = Path()

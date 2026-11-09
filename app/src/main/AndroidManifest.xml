@@ -144,6 +144,12 @@
             android:exported="false"
             android:label="Screen time" />
 
+        <!-- One app's screen time and patterns, from a row on the Usage page. -->
+        <activity
+            android:name=".AppUsageActivity"
+            android:exported="false"
+            android:label="App usage" />
+
         <!-- Target of the "Contact support" launcher shortcut -->
         <activity
             android:name=".SupportActivity"

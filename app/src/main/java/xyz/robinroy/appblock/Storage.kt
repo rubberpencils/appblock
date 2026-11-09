@@ -1190,6 +1190,170 @@ object Storage {
     /** The file the history lives in, in the app's databases; left out of Auto Backup (single device, and it grows past the quota). */
     const val HISTORY_DB = "history.db"
 
+    /**
+     * Screen time leaves out the apps the user said not to count (maps while
+     * driving, an app they study with): their time stays in the history and
+     * on their own page, but not in the day's total, chart or busiest hour.
+     */
+    fun counted(sessions: List<Session>, ignored: Set<String>): List<Session> =
+        if (ignored.isEmpty()) sessions else sessions.filter { it.pkg !in ignored }
+
+    // ---- the Usage page's list: search, sort, and the apps with no use ----
+
+    /** An app on the Usage page: its name and its time on the day showing. */
+    data class AppUse(val pkg: String, val label: String, val ms: Long)
+
+    enum class UsageSort { TIME, NAME }
+
+    /** An app whose name has the search in it, any case; an empty search finds all. */
+    fun matches(label: String, query: String): Boolean =
+        query.isBlank() || label.lowercase().contains(query.trim().lowercase())
+
+    /** By time (ties by name) or by name (ties by package), either way round. */
+    fun sortApps(apps: List<AppUse>, sort: UsageSort, descending: Boolean): List<AppUse> {
+        val byName = compareBy<AppUse>({ it.label.lowercase() }, { it.pkg })
+        val key = when (sort) {
+            UsageSort.TIME -> if (descending) compareByDescending<AppUse> { it.ms } else compareBy { it.ms }
+            UsageSort.NAME -> if (descending) byName.reversed() else byName
+        }
+        return apps.sortedWith(if (sort == UsageSort.TIME) key.then(byName) else key)
+    }
+
+    /** The installed apps (package to name) with no time on the day: by name, each once. */
+    fun noUsage(installed: Map<String, String>, used: Set<String>): List<AppUse> =
+        installed.filterKeys { it !in used }.map { (pkg, label) -> AppUse(pkg, label, 0) }
+            .sortedWith(compareBy({ it.label.lowercase() }, { it.pkg }))
+
+    /**
+     * A chart's minute marks for a peak of `peakMin` minutes: round steps
+     * (1, 2, 5, 10, 15, 20 or 30), the fewest that still give at most three
+     * marks, the last at or above the peak and never past `capMin` (a
+     * slice can't hold more than its own length). Empty for an empty chart.
+     */
+    fun niceTicks(peakMin: Float, capMin: Int): List<Int> {
+        if (peakMin <= 0f) return emptyList()
+        val peak = minOf(peakMin, capMin.toFloat())
+        for (step in listOf(1, 2, 5, 10, 15, 20, 30)) {
+            val top = (kotlin.math.ceil(peak / step).toInt() * step).coerceAtLeast(step)
+            if (top / step <= 3 && top <= capMin) return (step..top step step).toList()
+        }
+        return listOf(capMin)
+    }
+
+    /**
+     * A slice of the day: "9:15 to 9:30 PM", or "11:45 AM to 12:00 PM" across
+     * noon; the one going on now, "11:15 PM to now".
+     */
+    fun sliceRange(start: Long, end: Long, zone: java.time.ZoneId, ongoing: Boolean = false): String {
+        val f = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.ENGLISH)
+        val a = java.time.Instant.ofEpochMilli(start).atZone(zone).format(f)
+        if (ongoing) return "$a to now"
+        val b = java.time.Instant.ofEpochMilli(end).atZone(zone).format(f)
+        return if (a.takeLast(2) == b.takeLast(2)) "${a.dropLast(3)} to $b" else "$a to $b"
+    }
+
+    /** A minute mark: "5 min". */
+    fun fmtTick(min: Int): String = "$min min"
+
+    // ---- the calendar: screen time's date picker ----
+
+    /**
+     * A month as calendar rows of seven days, weeks starting on `firstDow`:
+     * null for the cells before the 1st and after the last day.
+     */
+    fun monthGrid(month: java.time.YearMonth, firstDow: java.time.DayOfWeek): List<List<java.time.LocalDate?>> {
+        val lead = (month.atDay(1).dayOfWeek.value - firstDow.value + 7) % 7
+        val cells = List<java.time.LocalDate?>(lead) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+        return cells.chunked(7).map { it + List(7 - it.size) { null } }
+    }
+
+    /** A day the calendar offers: from the history's first day (today, with no history yet) to today. */
+    fun pickable(day: java.time.LocalDate, firstDay: java.time.LocalDate?, today: java.time.LocalDate): Boolean =
+        !day.isAfter(today) && !day.isBefore(minOf(firstDay ?: today, today))
+
+    /** A month the calendar can step to: one with a day to pick. */
+    fun monthPickable(month: java.time.YearMonth, firstDay: java.time.LocalDate?, today: java.time.LocalDate): Boolean =
+        !month.isAfter(java.time.YearMonth.from(today)) &&
+            !month.isBefore(java.time.YearMonth.from(minOf(firstDay ?: today, today)))
+
+    // ---- one app's patterns: its own page ----
+
+    /** How far back an app's stats look: the last week, the last 30 days, or the whole history. */
+    enum class StatsRange(val days: Long?, val label: String) {
+        WEEK(7, "7 days"), MONTH(30, "30 days"), ALL(null, "All time")
+    }
+
+    /**
+     * The days a range covers, ending today: its last `days` days, but never
+     * before the history starts (a week-old history's "30 days" is a week).
+     */
+    fun rangeDays(range: StatsRange, firstDay: java.time.LocalDate?, today: java.time.LocalDate): Pair<java.time.LocalDate, java.time.LocalDate> {
+        val start = minOf(firstDay ?: today, today)
+        val want = range.days?.let { today.minusDays(it - 1) } ?: start
+        return maxOf(want, start) to today
+    }
+
+    /**
+     * An app over a range of days. `avgMs`: its time per day, today (so far)
+     * counted as a day. `topDay`: the day it was used most, the latest on a
+     * tie (null if never used). `hours`: its time in each hour of the clock,
+     * 0 (midnight) to 23, all days together; `peakHour` the biggest of them
+     * (the earliest on a tie).
+     * `opens`: its sessions that began in the range, `avgSessionMs` their
+     * average; `longestMs` the longest session in it.
+     */
+    data class AppStats(
+        val days: Int, val totalMs: Long, val avgMs: Long,
+        val topDay: java.time.LocalDate?, val topDayMs: Long,
+        val hours: LongArray, val peakHour: Int?,
+        val opens: Int, val avgSessionMs: Long, val longestMs: Long,
+    )
+
+    fun appStats(
+        sessions: List<Session>, first: java.time.LocalDate, last: java.time.LocalDate,
+        zone: java.time.ZoneId, upTo: Long,
+    ): AppStats {
+        val from = dayBounds(first, zone).first
+        val to = minOf(dayBounds(last, zone).second, upTo)
+        val spans = union(clip(sessions, from, to).map { it.start to it.end })
+        val perDay = sortedMapOf<java.time.LocalDate, Long>()
+        val hours = LongArray(24)
+        for ((a, b) in spans) {
+            // Walk the span an hour of the clock at a time (a day that skips or repeats an hour included).
+            var t = a
+            while (t < b) {
+                val at = java.time.Instant.ofEpochMilli(t).atZone(zone)
+                val next = minOf(b, at.truncatedTo(java.time.temporal.ChronoUnit.HOURS).plusHours(1).toInstant().toEpochMilli())
+                hours[at.hour] += next - t
+                perDay.merge(at.toLocalDate(), next - t, Long::plus)
+                t = next
+            }
+        }
+        val total = spans.sumOf { it.second - it.first }
+        val days = (java.time.temporal.ChronoUnit.DAYS.between(first, last) + 1).toInt().coerceAtLeast(1)
+        val top = perDay.entries.filter { it.value > 0 }.maxWithOrNull(compareBy({ it.value }, { it.key }))
+        val peak = (0..23).filter { hours[it] > 0 }.maxWithOrNull(compareBy({ hours[it] }, { -it }))
+        val own = clip(sessions, from, to)
+        // Opened in the range: a session going on at its start was opened before it,
+        // and isn't in the time per open either.
+        val opened = sessions.filter { it.start in from until to }
+        val openedMs = clip(opened, from, to).sumOf { it.end - it.start }
+        return AppStats(
+            days, total, total / days, top?.key, top?.value ?: 0, hours, peak,
+            opened.size, if (opened.isNotEmpty()) openedMs / opened.size else 0, own.maxOfOrNull { it.end - it.start } ?: 0,
+        )
+    }
+
+    /** "9 PM to 10 PM": the clock hour starting at `hour` (0 to 23). */
+    fun hourRange(hour: Int): String {
+        fun h(x: Int) = when (val m = x % 24) { 0 -> "12 AM"; 12 -> "12 PM"; else -> if (m < 12) "$m AM" else "${m - 12} PM" }
+        return "${h(hour)} to ${h(hour + 1)}"
+    }
+
+    /** How long an app stays open, on average: "About 4 minutes each", "Under a minute each". */
+    fun perOpenText(ms: Long): String =
+        if (ms < 60_000) "Under a minute each" else "About ${fmtScreenTime(ms)} each"
+
     // ---- persistence: JSON blobs in SharedPreferences ----
     //
     //   rules:      {"com.instagram.android": {"allow": 5, "window": 120}, ...}
@@ -1223,6 +1387,15 @@ object Storage {
 
     fun setUsageCardDismissed(ctx: Context) {
         prefs(ctx).edit().putBoolean("usageCardDismissed", true).apply()
+    }
+
+    // Apps left out of screen time (counted()): the user's choice, on each app's page.
+    fun screenTimeIgnored(ctx: Context): Set<String> =
+        prefs(ctx).getStringSet("screenTimeIgnored", null)?.toSet() ?: emptySet()
+
+    fun setCountsInScreenTime(ctx: Context, pkg: String, counts: Boolean) {
+        val now = screenTimeIgnored(ctx)
+        prefs(ctx).edit().putStringSet("screenTimeIgnored", if (counts) now - pkg else now + pkg).apply()
     }
 
     fun setOnboardingSeen(ctx: Context) {

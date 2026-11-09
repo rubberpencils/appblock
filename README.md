@@ -24,9 +24,7 @@ one whose time is up. It only looks at which app each window belongs to, never a
 what's inside, except for YouTube's Shorts player or Instagram's Reels player (by
 its view id, no text) when they're blocked. Besides switching it on in Settings > Accessibility, it needs a
 battery exemption so the phone doesn't put it to sleep. Usage access is optional,
-for screen time: the home screen shows each day's, across the day, from a history
-AppBlock keeps on the phone (copied from Android's usage events, which Android
-itself drops after a week or so; left out of backups). While a limited app is on screen, a notification counts
+for screen time (below). While a limited app is on screen, a notification counts
 down its time (with 50%/90% warnings); two limited apps side by side get one each.
 
 Installing the APK from GitHub on Android 13 or later? Android greys out the
@@ -36,6 +34,26 @@ AppBlock's App info, tap ⋮, choose "Allow restricted settings", then switch it
 Force-stopping AppBlock (App info > Force stop) switches its accessibility service
 off; that's an Android rule. Blocking pauses, rules kept, until you switch it back
 on from the checklist in AppBlock.
+
+## Screen time
+
+| ![The Usage page: the day's chart and every app used](public/screen-time.jpg) | ![An app's own page: its patterns and peak hours](public/app-usage.jpg) |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+
+With usage access, the home screen shows your screen time for the day: the
+total, a chart across the day (limited apps in green), and the busiest hour.
+Tap or drag along the chart to read any 15 minutes of it to the second; the
+arrows, or the date for a calendar, go back through past days.
+
+**See apps** lists every app used that day, to search and sort, and each app has
+its own page: its day, and its patterns over a week, a month or all time (daily
+average, most used day, how often it's opened and for how long, peak hours).
+Apps that shouldn't count, like maps while driving or an app you study with, can
+be left out of the totals there.
+
+AppBlock keeps this history itself, on the phone, for good: it copies Android's
+usage events, which Android drops after a week or so. It isn't sent anywhere and
+is left out of backups.
 
 ## Strict mode
 
