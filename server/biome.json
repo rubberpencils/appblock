@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": ["**", "!site", "!.wrangler", "!worker-configuration.d.ts"]
+  },
+  "formatter": {
+    "indentStyle": "space"
+  }
+}

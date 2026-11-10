@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    // Node runs scripts/ as they are, by stripping the types.
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "types": ["node", "@cloudflare/vitest-plugin/types"]
+  },
+  "include": [
+    "src",
+    "scripts",
+    "test",
+    "vitest.config.ts",
+    // Written by `wrangler types` from wrangler.jsonc (gitignored).
+    "worker-configuration.d.ts"
+  ]
+}

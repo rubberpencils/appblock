@@ -1,0 +1,42 @@
+// The Worker behind trymoly.com: the website and the signed rules as
+// static files, and the API under /api/. `wrangler dev` runs it locally;
+// the `Publish site` workflow deploys it on every push to main.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "moly",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-09",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Builds site/ from ../web and ../rules before `dev` and `deploy`, and
+  // again when either folder changes during `dev`.
+  "build": {
+    "command": "node scripts/build-site.ts",
+    "watch_dir": ["../web", "../rules"]
+  },
+
+  // A request for a file in site/ is answered without running the Worker
+  // (and without counting towards its request limit), and a path with no
+  // file gets 404.html. /api/ always goes to src/index.ts: without
+  // `run_worker_first`, a browser opening an /api/ address would be given
+  // the 404 page instead, as Cloudflare answers page navigations itself.
+  "assets": {
+    "directory": "./site",
+    "binding": "ASSETS",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // Cloudflare creates the DNS record and the certificate for it.
+  "routes": [{ "pattern": "trymoly.com", "custom_domain": true }],
+  // Only on trymoly.com: no second copy at moly.<account>.workers.dev.
+  "workers_dev": false,
+  "preview_urls": false,
+
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true },
+    "traces": { "enabled": true }
+  },
+  "upload_source_maps": true
+}

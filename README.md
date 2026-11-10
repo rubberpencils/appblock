@@ -7,7 +7,7 @@
 <p align="center">
   A few minutes per app, every few hours. Not a daily quota that's gone an hour after you wake up.
   <br>
-  <a href="https://appblock.robinroy.xyz">Website</a>
+  <a href="https://trymoly.com">Website</a>
 </p>
 
 <table>

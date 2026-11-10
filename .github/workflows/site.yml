@@ -1,35 +1,38 @@
 name: Publish site
 
-# Publishes appblock.robinroy.xyz on GitHub Pages: the pages in web/
-# (privacy policy and the like) at the site root, and the signed
+# Publishes trymoly.com on Cloudflare (the Worker in server/): the pages in
+# web/ (privacy policy and the like) at the site root, the signed
 # Shorts-detection rules at /<format>/rules.signed.json (rules/v1/ in the
-# repo is /v1/ there), where the app fetches them. It only publishes rules:
-# signing happens on a key holder's machine (./gradlew signRules), so a
-# push can't make rules the app accepts, only copy ones already signed.
-# A Pages deploy replaces the whole site, so the pages and every rules
-# format are published each time. On a push to main that touches either,
-# and on demand (Actions > Publish site > Run workflow).
+# repo is /v1/ there), the path the app fetches, and the API under /api/.
+# It only publishes rules: signing happens on a key holder's machine
+# (./gradlew signRules), so a push can't make rules the app accepts, only
+# copy ones already signed. A deploy replaces the whole site, so the pages
+# and every rules format are published each time. On a push to main that
+# touches any of them, and on demand (Actions > Publish site > Run workflow),
+# from main only: the job refuses another branch, and so does its
+# `production` environment, which allows deployments from main alone.
 on:
   push:
     branches: [main]
-    paths: ["web/**", "rules/**", ".github/workflows/site.yml"]
+    paths: ["web/**", "rules/**", "server/**", ".github/workflows/site.yml"]
   workflow_dispatch:
 
 # One deploy at a time, and a running one is never cut off halfway.
 concurrency:
-  group: pages
+  group: publish-site
   cancel-in-progress: false
 
 jobs:
   publish:
+    # "Run workflow" offers every branch; only main is ever published.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://trymoly.com
     permissions:
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -40,31 +43,26 @@ jobs:
       # FeedsTest checks the signed rules against the app's public key and
       # their rules.json: a file the app would throw away is never published.
       - run: ./gradlew testDebugUnitTest
-      # web/ as is, then only the signed rules on top:
-      # rules/v1/rules.signed.json -> site/v1/rules.signed.json.
-      - name: Build the site
-        run: |
-          # /v1/, /v2/... belong to the rules: a page there would be
-          # served next to them, or be overwritten by them.
-          for d in rules/*/; do
-            if [ -e "web/$(basename "$d")" ]; then
-              echo "::error::web/$(basename "$d") clashes with the rules at /$(basename "$d")/"
-              exit 1
-            fi
-          done
-          # The Play Store listing links to the privacy policy.
-          if [ ! -f web/privacy/index.html ]; then
-            echo "::error::web/privacy/index.html is missing"
-            exit 1
-          fi
-          cp -R web site
-          for f in rules/*/rules.signed.json; do
-            mkdir -p "site/$(basename "$(dirname "$f")")"
-            cp "$f" "site/$(basename "$(dirname "$f")")/"
-          done
-          find site -type f
-      - uses: actions/upload-pages-artifact@v5
+      - uses: pnpm/action-setup@v6
         with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v5
+          package_json_file: server/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: server/.node-version
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        working-directory: server
+      # The server's own checks. Its site build refuses a page in web/ that
+      # would sit on the rules' or the API's path, and a missing privacy
+      # policy (the Play Store listing links to it).
+      - run: pnpm check
+        working-directory: server
+      # Builds site/ from web/ and rules/ again, then uploads it with the
+      # Worker. What the token may do is listed in docs/cloudflare.md.
+      - name: Deploy to Cloudflare
+        run: pnpm exec wrangler deploy
+        working-directory: server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  app-unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -98,3 +98,26 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/connected_android_test_additional_output/
+
+  # The server behind trymoly.com (server/): lint, typecheck, and its tests,
+  # which run the Worker in workerd and start the real local server
+  # (`wrangler dev`). Same as `pnpm check` in server/ locally.
+  server-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+      # pnpm at the version server/package.json names (`packageManager`).
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: server/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: server/.node-version
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
