@@ -1,0 +1,30 @@
+{
+  "name": "moly-server",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.17.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "build:site": "node scripts/build-site.ts",
+    "typecheck": "wrangler types && tsc --noEmit",
+    "lint": "biome check --error-on-warnings .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.13.17"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.6",
+    "@cloudflare/vitest-plugin": "^1.6.1",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.159.0"
+  }
+}
