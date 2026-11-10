@@ -40,11 +40,18 @@ function standIn(path: string, name: string, status = 0): void {
   chmodSync(path, 0o755);
 }
 
+// These tests run inside the hook they test (a commit runs `pnpm check`),
+// where git has set GIT_INDEX_FILE and the like for the real repo. Nothing
+// here may inherit them: the scratch repo's git would write to that index.
 function git(...args: string[]): void {
   const done = spawnSync(
     "git",
     ["-c", "user.name=test", "-c", "user.email=test@example.com", ...args],
-    { cwd: repo, encoding: "utf8" },
+    {
+      cwd: repo,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH ?? "", HOME: root },
+    },
   );
   if (done.status !== 0)
     throw new Error(`git ${args.join(" ")}: ${done.stderr}`);
