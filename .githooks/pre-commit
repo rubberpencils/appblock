@@ -1,5 +1,7 @@
 #!/bin/sh
-# Runs the unit tests before every commit; a failing test blocks the commit.
+# Runs the tests before every commit; a failing one blocks the commit.
+# The app's unit tests always, and the server's checks when the commit
+# touches the server or what it serves (server/, web/, rules/).
 # Enable once per clone with: git config core.hooksPath .githooks
 
 # Gradle needs Java 17; pick up the Homebrew one if the shell default is older.
@@ -12,3 +14,20 @@ echo "pre-commit: running unit tests..."
   echo "pre-commit: tests failed — commit blocked. (Bypass in an emergency: git commit --no-verify)"
   exit 1
 }
+
+# Deleted files count too: a removed page changes the site.
+if git diff --cached --name-only | grep -qE '^(server|web|rules)/'; then
+  echo "pre-commit: running the server's checks..."
+  if ! command -v pnpm >/dev/null 2>&1; then
+    echo "pre-commit: this commit changes server/, web/ or rules/, and the server's checks need pnpm, which isn't installed. See AGENTS.md (Setup) — commit blocked."
+    exit 1
+  fi
+  if [ ! -d server/node_modules ]; then
+    echo "pre-commit: the server's packages aren't installed. Run: (cd server && pnpm install) — commit blocked."
+    exit 1
+  fi
+  (cd server && pnpm --silent check) || {
+    echo "pre-commit: the server's checks failed — commit blocked. (Bypass in an emergency: git commit --no-verify)"
+    exit 1
+  }
+fi
