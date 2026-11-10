@@ -15,8 +15,9 @@ echo "pre-commit: running unit tests..."
   exit 1
 }
 
-# Deleted files count too: a removed page changes the site.
-if git diff --cached --name-only | grep -qE '^(server|web|rules)/'; then
+# Asked of git by path, not by matching file names: that also catches a
+# page deleted or moved out of web/, and names git prints quoted.
+if ! git diff --cached --quiet -- server web rules; then
   echo "pre-commit: running the server's checks..."
   if ! command -v pnpm >/dev/null 2>&1; then
     echo "pre-commit: this commit changes server/, web/ or rules/, and the server's checks need pnpm, which isn't installed. See AGENTS.md (Setup) — commit blocked."
@@ -27,7 +28,7 @@ if git diff --cached --name-only | grep -qE '^(server|web|rules)/'; then
     exit 1
   fi
   (cd server && pnpm --silent check) || {
-    echo "pre-commit: the server's checks failed — commit blocked. (Bypass in an emergency: git commit --no-verify)"
+    echo "pre-commit: the server's checks failed — commit blocked."
     exit 1
   }
 fi
