@@ -1,7 +1,7 @@
 // Builds the folder Cloudflare serves (server/site/, gitignored): the pages
 // in web/ as they are, then each rules format's signed file on top
-// (rules/v1/rules.signed.json -> site/v1/rules.signed.json), where the app
-// fetches it. Only signed files are published: signing happens on a key
+// (rules/v1/rules.signed.json -> site/v1/rules.signed.json), the path the
+// app fetches. Only signed files are published: signing happens on a key
 // holder's machine (./gradlew signRules), so a build can't make rules the
 // app accepts, only publish ones already signed.
 //
@@ -97,11 +97,17 @@ export function buildSite({ web, rules, out }: SiteDirs): void {
   const files = siteFiles({ web, rules });
   for (const [path, source] of files) {
     const target = join(out, path);
-    if (
-      existsSync(target) &&
-      readFileSync(target).equals(readFileSync(source))
-    ) {
-      continue;
+    // A page that was a folder in the last build, or a folder that was a
+    // page: clear what is in the way.
+    for (let dir = dirname(target); dir !== out; dir = dirname(dir)) {
+      if (existsSync(dir) && !statSync(dir).isDirectory()) rmSync(dir);
+    }
+    if (existsSync(target)) {
+      if (statSync(target).isDirectory()) {
+        rmSync(target, { recursive: true });
+      } else if (readFileSync(target).equals(readFileSync(source))) {
+        continue;
+      }
     }
     mkdirSync(dirname(target), { recursive: true });
     copyFileSync(source, target);

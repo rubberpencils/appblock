@@ -1,7 +1,8 @@
 // The Worker behind trymoly.com. Cloudflare serves the static site (the
 // pages in web/ and the signed rules, built into site/) by itself, without
-// running this code. A request only reaches here when no file matched it:
-// the API under /api/, or a path that doesn't exist.
+// running this code. What reaches here: everything under /api/, and a
+// request for a path that doesn't exist, unless it is a browser opening a
+// page (Cloudflare answers that with 404.html itself).
 import { Hono } from "hono";
 
 const app = new Hono<{ Bindings: Env }>();

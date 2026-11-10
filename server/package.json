@@ -13,8 +13,7 @@
     "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",
     "test": "vitest run",
-    "check": "pnpm lint && pnpm typecheck && pnpm test",
-    "deploy": "wrangler deploy"
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "hono": "^4.13.17"

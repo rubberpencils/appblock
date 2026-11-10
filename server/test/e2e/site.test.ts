@@ -2,6 +2,7 @@
 // server (`wrangler dev`), where files are answered by Cloudflare's static
 // site layer and everything else by the Worker.
 import { readFileSync } from "node:fs";
+import { request } from "node:http";
 import { join } from "node:path";
 import { describe, expect, inject, it } from "vitest";
 import { repoDirs, rulesFormats } from "../../scripts/build-site.ts";
@@ -12,6 +13,39 @@ const { web, rules } = repoDirs();
 /** A request that reports a redirect instead of following it. */
 function get(path: string, headers: Record<string, string> = {}) {
   return fetch(baseUrl + path, { headers, redirect: "manual" });
+}
+
+/**
+ * The request a browser makes when someone opens an address. `fetch` can't
+ * make it: it sets `Sec-Fetch-Mode` itself, to "cors".
+ */
+function open(path: string): Promise<{
+  status: number;
+  type: string;
+  body: string;
+}> {
+  return new Promise((done, fail) => {
+    request(
+      baseUrl + path,
+      { headers: { "Sec-Fetch-Mode": "navigate", Accept: "text/html" } },
+      (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () =>
+          done({
+            status: response.statusCode ?? 0,
+            type: response.headers["content-type"] ?? "",
+            body,
+          }),
+        );
+      },
+    )
+      .on("error", fail)
+      .end();
+  });
 }
 
 describe("the website", () => {
@@ -110,5 +144,39 @@ describe("the API, through the same address", () => {
     const response = await get("/api/nope");
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+});
+
+// Cloudflare answers a browser's navigation to a path with no file by
+// itself, with the 404 page. /api/ has to be exempt (`run_worker_first` in
+// wrangler.jsonc), or a link to an API address would never reach the Worker.
+describe("an address opened in a browser", () => {
+  it("reaches the Worker under /api/", async () => {
+    const response = await open("/api/health");
+    expect(response.status).toBe(200);
+    expect(response.type).toContain("application/json");
+    expect(JSON.parse(response.body)).toEqual({ ok: true });
+  });
+
+  it("gets the API's JSON 404 for an unknown path under /api/", async () => {
+    const response = await open("/api/nope");
+    expect(response.status).toBe(404);
+    expect(response.type).toContain("application/json");
+    expect(JSON.parse(response.body)).toEqual({ error: "not_found" });
+  });
+
+  it("gets the 404 page for a page that doesn't exist", async () => {
+    const response = await open("/no-such-page");
+    expect(response.status).toBe(404);
+    expect(response.type).toContain("text/html");
+    expect(response.body).toBe(readFileSync(join(web, "404.html"), "utf8"));
+  });
+
+  it("gets a page that exists", async () => {
+    const response = await open("/privacy/");
+    expect(response.status).toBe(200);
+    expect(response.body).toBe(
+      readFileSync(join(web, "privacy/index.html"), "utf8"),
+    );
   });
 });

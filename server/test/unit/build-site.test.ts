@@ -187,6 +187,26 @@ describe("buildSite", () => {
     expect(existsSync(join(dirs.out, "v1"))).toBe(false);
   });
 
+  it("replaces a folder with the page that took its name", () => {
+    write(join(dirs.web, "guide", "index.html"), "a folder");
+    buildSite(dirs);
+    rmSync(join(dirs.web, "guide"), { recursive: true });
+    write(join(dirs.web, "guide"), "now a page");
+    buildSite(dirs);
+    expect(readFileSync(join(dirs.out, "guide"), "utf8")).toBe("now a page");
+  });
+
+  it("replaces a page with the folder that took its name", () => {
+    write(join(dirs.web, "guide"), "a page");
+    buildSite(dirs);
+    rmSync(join(dirs.web, "guide"));
+    write(join(dirs.web, "guide", "deep", "index.html"), "now a folder");
+    buildSite(dirs);
+    expect(
+      readFileSync(join(dirs.out, "guide", "deep", "index.html"), "utf8"),
+    ).toBe("now a folder");
+  });
+
   it("touches nothing when the site is already up to date", () => {
     buildSite(dirs);
     const long_ago = new Date("2020-01-01T00:00:00Z");

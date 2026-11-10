@@ -29,8 +29,9 @@ function freePort(): Promise<number> {
 async function ready(child: ChildProcess, baseUrl: string, log: () => string) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`wrangler dev exited (${child.exitCode}):\n${log()}`);
+    if (child.exitCode !== null || child.signalCode !== null) {
+      const how = child.signalCode ?? child.exitCode;
+      throw new Error(`wrangler dev exited (${how}):\n${log()}`);
     }
     try {
       const response = await fetch(`${baseUrl}/api/health`);
@@ -61,8 +62,24 @@ export default async function setup(project: TestProject) {
     output += chunk;
   });
   const stop = () => {
-    if (child.pid && child.exitCode === null) process.kill(-child.pid);
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      try {
+        process.kill(-child.pid);
+      } catch {
+        // Already gone.
+      }
+    }
   };
+  // Vitest doesn't run the teardown when the run is interrupted (Ctrl-C, or
+  // a hook that is killed), and the server's own process group wouldn't get
+  // the signal either: stop it on the way out, whatever the way out is.
+  process.once("exit", stop);
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    process.once(signal, () => {
+      stop();
+      process.exit(1);
+    });
+  }
   try {
     await ready(child, baseUrl, () => output);
   } catch (error) {

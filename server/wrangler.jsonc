@@ -16,12 +16,15 @@
   },
 
   // A request for a file in site/ is answered without running the Worker
-  // (and without counting towards its request limit). Everything else goes
-  // to src/index.ts, which sends unknown pages back here for 404.html.
+  // (and without counting towards its request limit), and a path with no
+  // file gets 404.html. /api/ always goes to src/index.ts: without
+  // `run_worker_first`, a browser opening an /api/ address would be given
+  // the 404 page instead, as Cloudflare answers page navigations itself.
   "assets": {
     "directory": "./site",
     "binding": "ASSETS",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
   },
 
   // Cloudflare creates the DNS record and the certificate for it.
