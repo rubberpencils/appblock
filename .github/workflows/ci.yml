@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  app-unit-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -102,7 +102,7 @@ jobs:
   # The server behind trymoly.com (server/): lint, typecheck, and its tests,
   # which run the Worker in workerd and start the real local server
   # (`wrangler dev`). Same as `pnpm check` in server/ locally.
-  server:
+  server-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:

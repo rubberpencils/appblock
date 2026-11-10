@@ -92,12 +92,12 @@ don't wait to be asked; check with `git config core.hooksPath`):
    `app/src/androidTest/` in the same commit.
 
 CI (`.github/workflows/ci.yml`) runs on pushes to `main` and on every pull
-request (a branch gets CI once its PR is open; open a draft PR early): `test` (unit
-tests + compile), and the suite above on fresh emulators: `e2e-android-14`
+request (a branch gets CI once its PR is open; open a draft PR early): `app-unit-tests`
+(unit tests + compile), and the suite above on fresh emulators: `e2e-android-14`
 (the Google Play image, like `scripts/emulator.sh`'s) and `e2e-android-16`
 on Android 16, the version the app targets. The suite installs `fixture/`,
 a stand-in app with YouTube's and Instagram's player view ids, for the Shorts
-and Reels tests. A fourth job, `server`, runs `pnpm check` in `server/`. Check a
+and Reels tests. A fourth job, `server-checks`, runs `pnpm check` in `server/`. Check a
 push with `gh run list`; a failing e2e run uploads an `e2e-report-api-<level>`
 artifact with the HTML report, plus a screenshot and the device log for
 each failed test.
@@ -267,7 +267,7 @@ Node (the version in `server/.node-version`) and pnpm. From `server/`:
 ```sh
 pnpm install     # once
 pnpm dev         # the site and the API at http://localhost:8787
-pnpm check       # lint + typecheck + every test: what CI's `server` job runs
+pnpm check       # lint + typecheck + every test: CI's `server-checks` job
 pnpm format      # apply the formatter
 ```
 
