@@ -36,9 +36,9 @@ how we know it still works. A change without tests isn't finished.
 
 Done means all of these:
 
-1. The pre-commit hook passes: `./gradlew testDebugUnitTest`, and
-   `pnpm check` in `server/` when the commit touches `server/`, `web/` or
-   `rules/`.
+1. The pre-commit hook passes: the app's unit tests (`./gradlew test`),
+   and `pnpm check` in `server/` when the commit touches `server/`, `web/`
+   or `rules/`.
 2. `scripts/e2e.sh` passes on the emulator, for a change to the app or its
    tests. It's the suite CI runs.
 3. The new behaviour has its tests, as above.
@@ -276,8 +276,8 @@ and one `style.css`, no generator.
 `server/` is the Cloudflare Worker behind `trymoly.com` (TypeScript, with
 Hono for the routes). Cloudflare answers a request for a file (a page, the
 rules) by itself, without running the Worker. The Worker (`src/index.ts`)
-gets the rest: the API under `/api/`, and paths that don't exist. From
-`server/`:
+gets the rest: everything under `/api/`, and paths that don't exist, which
+it hands back for the 404 page. From `server/`:
 
 ```sh
 pnpm install     # once
@@ -295,11 +295,12 @@ this needs a Cloudflare account.
   `e2e/` for HTTP requests to a `wrangler dev` the tests start themselves.
   Anything a client relies on goes in `e2e/`: the app's side of the rules
   fetch (the signed file, its `ETag`, the `304`) is held to it there.
-  `pnpm test --project unit` runs one layer.
-- **Deploys** happen in CI only: on a push to `main` that changes
-  `server/`, `web/` or `rules/`, `Publish site` runs the app's unit tests
-  and `pnpm check`, then `wrangler deploy`. There is no staging copy:
-  `main` is what is live.
+  `pnpm test --project unit` runs one layer. The pre-commit hook's own
+  tests are in `unit/` too.
+- **Deploys** happen in CI only, never from a laptop: on a push to `main`
+  that changes `server/`, `web/` or `rules/`, `Publish site` runs the
+  app's unit tests and `pnpm check`, then `wrangler deploy`. It publishes
+  `main` and nothing else. There is no staging copy: `main` is what is live.
 - **Configuration** is `server/wrangler.jsonc`: what the Worker is and
   where it answers. What has no config file (DNS, email, the `www`
   redirect, CI's token, who has access) is recorded in

@@ -33,8 +33,8 @@ Setting them back to "Namecheap BasicDNS" takes the domain off Cloudflare.
 | `www` A `192.0.2.1`, proxied | By hand, for the redirect below. The address is a reserved placeholder: the redirect answers before anything is sent to it. |
 | MX ×3, SPF and DKIM TXT | Email Routing. Locked: it manages them. |
 
-A hand-made record for `trymoly.com` itself would block the deploy: the
-Worker can't claim a name that already has one.
+Don't add a record for `trymoly.com` itself by hand: the deploy owns that
+name, and in CI it replaces whatever record is there.
 
 **Email** (Email → Email Routing): on, with the catch-all rule forwarding
 every `@trymoly.com` address to the maintainer's inbox. Receiving only.
@@ -61,12 +61,17 @@ The `Publish site` workflow deploys with two repository secrets:
   | This account | Workers Scripts: Edit, D1: Edit, Account Settings: Read |
   | The `trymoly.com` domain | Workers Routes: Edit |
 
-  It can't read or change DNS, email or anything else. It belongs to the
-  maintainer's login: if that login leaves the account, make a new one with
-  the same permissions. If it leaks, roll it in the dashboard and set the
-  secret again (`gh secret set CLOUDFLARE_API_TOKEN`).
+  It can't read or edit DNS records, email or anything else; its one reach
+  into DNS is the record a deploy makes for the Worker's own domain. It
+  belongs to the maintainer's login: if that login leaves the account, make
+  a new one with the same permissions. If it leaks, roll it in the
+  dashboard and set the secret again (`gh secret set CLOUDFLARE_API_TOKEN`).
 - `CLOUDFLARE_ACCOUNT_ID`: on the domain's Overview page. Not a secret, but
   the deploy needs it.
+
+The deploy job runs in the `production` environment (repo Settings →
+Environments), which only allows `main`, and the job itself refuses any
+other branch: "Run workflow" on a feature branch publishes nothing.
 
 ## The old address
 
@@ -87,16 +92,18 @@ With access, two CLIs, each signed in with your own login:
 
 ```sh
 npm install -g cf && cf auth login     # the account: DNS, the domain's settings, email
-cd server && pnpm exec wrangler login  # the Worker: logs (`wrangler tail`), deploys
+cd server && pnpm exec wrangler login  # the Worker: its logs (`wrangler tail`)
 ```
 
-Ask the maintainer before changing anything in the account.
+Ask the maintainer before changing anything in the account, and never
+deploy from a laptop: deploys go through CI, which runs the checks first.
 
 ## Limits worth knowing (free plan)
 
 - Requests the Worker's code answers: 100,000 a day. Past that they fail
-  until midnight UTC; there is no bill. Only `/api/` and paths that don't
-  exist count.
+  until midnight UTC; there is no bill. What counts: everything under
+  `/api/`, and requests for paths that don't exist unless a browser is
+  opening them as a page.
 - Requests for files (the website, the rules): free and unlimited. They are
   answered without running the Worker.
 
@@ -106,6 +113,7 @@ Ask the maintainer before changing anything in the account.
    record the import finds, and set the nameservers it gives at Namecheap.
 2. Once the domain is active: Email Routing, the `www` redirect (accept its
    offer to create the `www` record) and Always Use HTTPS, as above.
-3. Create the API token (the permissions above) and set both secrets.
+3. Create the API token (the permissions above), set both secrets, and
+   create the `production` environment, limited to `main`.
 4. Run the `Publish site` workflow. The first deploy creates the Worker, the
    DNS record for `trymoly.com` and its certificate.
