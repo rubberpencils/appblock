@@ -19,6 +19,8 @@ how we know it still works. A change without tests isn't finished.
 - **New or changed screen or flow** (onboarding, sheets, the picker, the
   wall, shortcuts): an end-to-end test in `app/src/androidTest/` that drives
   it the way a user would.
+- **New or changed server code** (`server/`): tests in `server/test/`, in
+  the layer that fits (see [Server](#server)).
 - **Bug fix:** a test that fails without the fix and passes with it.
 - **Changed something a test looks for** (text, a button, a dialog): update
   that test in the same commit, still checking the same behaviour.
@@ -32,7 +34,8 @@ Done means all of these:
 
 1. `./gradlew testDebugUnitTest` passes (the pre-commit hook runs it).
 2. `scripts/e2e.sh` passes on the emulator. It's the suite CI runs.
-3. The new behaviour has its tests, as above.
+3. The new behaviour has its tests, as above. A change in `server/`, `web/`
+   or `rules/` also passes `pnpm check` in `server/`.
 4. A user-visible change has been tried on the emulator or the phone.
 5. After pushing, CI is green (`gh run list`). Red CI on `main` comes before
    anything else, and a release is only ever made from a commit with green CI.
@@ -94,7 +97,7 @@ tests + compile), and the suite above on fresh emulators: `e2e-android-14`
 (the Google Play image, like `scripts/emulator.sh`'s) and `e2e-android-16`
 on Android 16, the version the app targets. The suite installs `fixture/`,
 a stand-in app with YouTube's and Instagram's player view ids, for the Shorts
-and Reels tests. Check a
+and Reels tests. A fourth job, `server`, runs `pnpm check` in `server/`. Check a
 push with `gh run list`; a failing e2e run uploads an `e2e-report-api-<level>`
 artifact with the HTML report, plus a screenshot and the device log for
 each failed test.
@@ -158,12 +161,16 @@ an Instagram rule names only `clips_*` ids; a unit test holds it to that.
 The Reels tab, a reel from Explore and a reel link all open the same
 player. There's no Instagram canary: the real Instagram needs an account,
 so check a Reels rule change on a phone. The app bundles the rules and
-fetches newer ones from `https://appblock.robinroy.xyz/v1/rules.signed.json`. That's GitHub Pages
-for this repo (a CNAME at Namecheap); the `Publish site` workflow deploys
-`rules/<format>/rules.signed.json` there on every push to `main` that
-changes `rules/`. `v1` is the rules format: a build fetches only the one it
-reads, so a new format goes in `rules/v2/` for the builds that read it,
-and `v1` keeps being served to older ones.
+fetches newer ones. The `Publish site` workflow publishes
+`rules/<format>/rules.signed.json` at
+`https://trymoly.com/<format>/rules.signed.json` (the [server](#server), on
+Cloudflare) on every push to `main` that changes `rules/`. The app doesn't
+fetch from there yet: until the rename to Moly (issue #17) changes
+`Storage.RULES_URL`, builds fetch
+`https://appblock.robinroy.xyz/v1/rules.signed.json`, the old GitHub Pages
+site, which nothing publishes to any more. `v1` is the rules format: a build
+fetches only the one it reads, so a new format goes in `rules/v2/` for the
+builds that read it, and `v1` keeps being served to older ones.
 
 - After editing `rules/v1/rules.json`, run `./gradlew signRules`. It stamps
   the file's `updated` with the time now (UTC; the newer file wins on the
@@ -182,8 +189,9 @@ and `v1` keeps being served to older ones.
   or put it in CI. Whoever holds it can publish rules to every phone, so
   if it may have leaked, tell the maintainer at once: the fix is an app
   update with a new key.
-- The rules go live for every user once `rules/v1/rules.signed.json` is
-  on `main` and `Publish site` has run. A rule only names view ids to look
+- The rules go live for every build that fetches from `trymoly.com` once
+  `rules/v1/rules.signed.json` is on `main` and `Publish site` has run (so
+  not for builds up to 2.5.0, as above). A rule only names view ids to look
   for in an app whose feed the user blocked; a bad one can at worst wall
   YouTube wrongly, and re-signing the old content (a newer `updated`)
   rolls it back.
@@ -234,16 +242,55 @@ end-to-end tests in `StrictE2eTest`.
 
 ## Website
 
-The same Pages site serves the pages in `web/` at its root: `web/index.html`
-is `appblock.robinroy.xyz/`, `web/privacy/index.html` is `/privacy/` (the
-Play Store listing links to it), `web/terms/index.html` is `/terms/`. Plain HTML and one `style.css`, no
-generator. `Publish site` copies `web/` as is, then the signed rules on top,
-on every push to `main` that changes `web/` or `rules/`. It refuses a
-`web/v1/` (or any folder named like a rules format: that path is the
-rules') and a missing privacy page. Preview with
-`python3 -m http.server -d web`. When a change touches what the app
-collects, sends or asks permission for (the manifest, usage access, the
-rules fetch, backups), update the privacy policy in the same commit.
+The [server](#server) serves the pages in `web/` at the site's root:
+`web/index.html` is `trymoly.com/`, `web/privacy/index.html` is `/privacy/`
+(the Play Store listing links to it), `web/terms/index.html` is `/terms/`.
+Plain HTML and one `style.css`, no generator. The site is `web/` as is, then
+the signed rules on top, published on every push to `main` that changes
+`web/`, `rules/` or `server/`. The build (`server/scripts/build-site.ts`)
+refuses a `web/v1/` (or any folder named like a rules format: that path is
+the rules'), a `web/api/` (the server's) and a missing privacy page. Preview
+with `pnpm dev` in `server/`: the site exactly as it is served. When a
+change touches what the app collects, sends or asks permission for (the
+manifest, usage access, the rules fetch, backups), update the privacy policy
+in the same commit.
+
+## Server
+
+`server/` is the Cloudflare Worker behind `trymoly.com`: TypeScript, with
+Hono for the routes. Cloudflare answers a request for a file (a page, the
+rules) by itself, without running the Worker; the Worker (`src/index.ts`)
+gets the rest: the API under `/api/`, and paths that don't exist. Needs
+Node (the version in `server/.node-version`) and pnpm. From `server/`:
+
+```sh
+pnpm install     # once
+pnpm dev         # the site and the API at http://localhost:8787
+pnpm check       # lint + typecheck + every test: what CI's `server` job runs
+pnpm format      # apply the formatter
+```
+
+`pnpm dev` is `wrangler dev`: the Worker runs in workerd, the runtime
+Cloudflare runs in production, with the static site in front of it as
+there. No Cloudflare account is needed for any of this.
+
+Its tests (`server/test/`, Vitest), from fastest to most real:
+
+- `unit/`: plain logic, such as the site build, in Node.
+- `worker/`: the Worker's routes, called inside workerd.
+- `e2e/`: HTTP requests to a running `wrangler dev`, which the tests start
+  themselves. Anything a client relies on goes here; the app's side of the
+  rules fetch (the signed file, its `ETag`, the `304`) is held to it there.
+
+`pnpm test --project unit` runs one layer.
+
+- Deploys happen in CI only: `Publish site` runs the app's unit tests and
+  `pnpm check`, then `wrangler deploy`. There is no staging copy: `main` is
+  what is live.
+- What the Worker is and where it answers is in `server/wrangler.jsonc`.
+  What has no config file (DNS, email, the `www` redirect, CI's token, who
+  has access) is in [docs/cloudflare.md](docs/cloudflare.md). Ask the
+  maintainer before changing anything in the Cloudflare account.
 
 ## Conventions
 
