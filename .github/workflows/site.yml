@@ -3,12 +3,14 @@ name: Publish site
 # Publishes trymoly.com on Cloudflare (the Worker in server/): the pages in
 # web/ (privacy policy and the like) at the site root, the signed
 # Shorts-detection rules at /<format>/rules.signed.json (rules/v1/ in the
-# repo is /v1/ there), where the app fetches them, and the API under /api/.
+# repo is /v1/ there), the path the app fetches, and the API under /api/.
 # It only publishes rules: signing happens on a key holder's machine
 # (./gradlew signRules), so a push can't make rules the app accepts, only
 # copy ones already signed. A deploy replaces the whole site, so the pages
 # and every rules format are published each time. On a push to main that
-# touches any of them, and on demand (Actions > Publish site > Run workflow).
+# touches any of them, and on demand (Actions > Publish site > Run workflow),
+# from main only: the job refuses another branch, and so does its
+# `production` environment, which allows deployments from main alone.
 on:
   push:
     branches: [main]
@@ -22,8 +24,13 @@ concurrency:
 
 jobs:
   publish:
+    # "Run workflow" offers every branch; only main is ever published.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment:
+      name: production
+      url: https://trymoly.com
     permissions:
       contents: read
     steps:
@@ -52,7 +59,7 @@ jobs:
       - run: pnpm check
         working-directory: server
       # Builds site/ from web/ and rules/ again, then uploads it with the
-      # Worker. The token can edit Workers on this account and nothing else.
+      # Worker. What the token may do is listed in docs/cloudflare.md.
       - name: Deploy to Cloudflare
         run: pnpm exec wrangler deploy
         working-directory: server
