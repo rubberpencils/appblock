@@ -168,7 +168,8 @@ Cloudflare) on every push to `main` that changes `rules/`. The app doesn't
 fetch from there yet: until the rename to Moly (issue #17) changes
 `Storage.RULES_URL`, builds fetch
 `https://appblock.robinroy.xyz/v1/rules.signed.json`, the old GitHub Pages
-site, which nothing publishes to any more. `v1` is the rules format: a build
+site. Nothing publishes to it any more, and it stays switched on so those
+builds keep the rules it has. `v1` is the rules format: a build
 fetches only the one it reads, so a new format goes in `rules/v2/` for the
 builds that read it, and `v1` keeps being served to older ones.
 

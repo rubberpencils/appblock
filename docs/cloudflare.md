@@ -53,13 +53,28 @@ one: phones would get a "prove you're human" page instead of the rules.
 
 The `Publish site` workflow deploys with two repository secrets:
 
-- `CLOUDFLARE_API_TOKEN`: made from the "Edit Cloudflare Workers" template
-  (profile → API Tokens), plus Account → D1 → Edit, limited to this account
-  and `trymoly.com`. It belongs to no person, so removing a member doesn't
-  break deploys. If it leaks, roll it in the dashboard and set the secret
-  again (`gh secret set CLOUDFLARE_API_TOKEN`).
+- `CLOUDFLARE_API_TOKEN`: the token named "GitHub Actions: deploy
+  trymoly.com" (profile → API Tokens). It can do only what a deploy needs:
+
+  | Scope | Permission |
+  |---|---|
+  | This account | Workers Scripts: Edit, D1: Edit, Account Settings: Read |
+  | The `trymoly.com` domain | Workers Routes: Edit |
+
+  It can't read or change DNS, email or anything else. It belongs to the
+  maintainer's login: if that login leaves the account, make a new one with
+  the same permissions. If it leaks, roll it in the dashboard and set the
+  secret again (`gh secret set CLOUDFLARE_API_TOKEN`).
 - `CLOUDFLARE_ACCOUNT_ID`: on the domain's Overview page. Not a secret, but
   the deploy needs it.
+
+## The old address
+
+`appblock.robinroy.xyz` is this repo's GitHub Pages site (Settings → Pages,
+and a CNAME at Namecheap). Nothing publishes to it any more, and it is left
+switched on: it goes on serving the last site published before the move, so
+builds up to 2.5.0, which fetch their rules there, keep getting them. Don't
+switch Pages off or remove the CNAME.
 
 ## Access for people
 
@@ -91,6 +106,6 @@ Ask the maintainer before changing anything in the account.
    record the import finds, and set the nameservers it gives at Namecheap.
 2. Once the domain is active: Email Routing, the `www` redirect (accept its
    offer to create the `www` record) and Always Use HTTPS, as above.
-3. Create the API token and set both secrets.
+3. Create the API token (the permissions above) and set both secrets.
 4. Run the `Publish site` workflow. The first deploy creates the Worker, the
    DNS record for `trymoly.com` and its certificate.
