@@ -138,6 +138,8 @@ scripts/e2e.sh                   # end-to-end tests on the emulator (also in CI)
 scripts/deploy.sh          # tests + release APK + adb install -r (keeps data/grants)
 scripts/fresh-install.sh   # same build, but uninstall first: wipes all app state
                            # to test the first-run flow
+scripts/local.sh           # the release build, talking to `pnpm dev` on this machine
+                           # instead of trymoly.com (start that first)
 ```
 
 Both handle JDK 17 and the adb path (via `scripts/env.sh`) themselves. Use
@@ -290,7 +292,9 @@ it hands back for the 404 page. From `server/`:
 
 ```sh
 pnpm install     # once
-pnpm dev         # the site and the API at http://localhost:8787
+pnpm dev         # the site and the API at http://localhost:8787, with a local database
+pnpm dev:mail    # the same, but its mail is really sent (to FEEDBACK_TO in .dev.vars)
+pnpm db:feedback # the feedback in the local database
 pnpm check       # lint + typecheck + every test: CI's `server-checks` job
 pnpm format      # apply the formatter
 ```
@@ -306,6 +310,9 @@ this needs a Cloudflare account.
   fetch (the signed file, its `ETag`, the `304`) is held to it there.
   `pnpm test --project unit` runs one layer. The pre-commit hook's own
   tests are in `unit/` too.
+- **The database** (D1, SQLite) is made of `migrations/*.sql`. A change is
+  a new numbered file, never an edit to one already applied. Every query
+  is in `src/db.ts`. `pnpm dev` only prints mail (`src/email.ts`).
 - **Deploys** happen in CI only, never from a laptop: on a push to `main`
   that changes `server/`, `web/` or `rules/`, `Publish site` runs the
   app's unit tests and `pnpm check`, then `wrangler deploy`. It publishes
