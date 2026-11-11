@@ -191,17 +191,23 @@ class UsageActivity : Activity() {
     /**
      * At the foot of the page: today's screen time as a widget on the home
      * screen. The launcher takes it from here (its own "Add to home screen"
-     * sheet); one that can't is offered nothing, and the widget is still in
-     * its widget list.
+     * sheet); one that can't is offered nothing, and one that says it can
+     * and then doesn't is answered with where to find it: the widget is in
+     * the launcher's widget list either way.
      */
     private fun widgetLink(): View? {
         val widgets = getSystemService(android.appwidget.AppWidgetManager::class.java) ?: return null
         val supported = try { widgets.isRequestPinAppWidgetSupported } catch (e: Exception) { false }
         if (!supported) return null
         return Ui.quietLink(this, "Add the widget to your home screen") {
-            try {
+            val asked = try {
                 widgets.requestPinAppWidget(android.content.ComponentName(this, ScreenTimeWidget::class.java), null, null)
-            } catch (e: Exception) {}
+            } catch (e: Exception) { false }
+            if (!asked) Sheet(this).header("Add it from your home screen",
+                "Touch and hold an empty spot on your home screen, tap Widgets, and find Moly.").apply {
+                actions(primary("OK") { dismiss() })
+                show()
+            }
         }
     }
 

@@ -100,6 +100,12 @@ class MainActivity : Activity() {
         refreshPermRows?.invoke()
     }
 
+    /** Left: a rule made here, or usage access allowed from here, shows on the home-screen widget (the blocker may be off). */
+    override fun onStop() {
+        super.onStop()
+        try { ScreenTimeWidget.screenChanged(this) } catch (e: Exception) {}
+    }
+
     // ------------------------------------------------------------- rendering
 
     /** Rebuild the page from storage. Entrance motion plays on the first build only. */

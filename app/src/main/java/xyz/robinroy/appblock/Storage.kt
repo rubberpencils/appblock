@@ -1641,15 +1641,38 @@ object Storage {
      */
     const val WIDGET_BASE_DP = 90
 
-    /** The limited apps' line, and the chart at its shortest, each with the gap above it (dp). */
+    /**
+     * The limited apps' line, and the chart at its shortest, each with the
+     * gap above it (dp). A narrow widget has no room for "Limited apps: 40
+     * minutes" on a line: there it's two, the name and the time under it.
+     */
     const val WIDGET_LEGEND_DP = 22
+    const val WIDGET_LEGEND_STACKED_DP = 40
     const val WIDGET_CHART_DP = 62
 
     /** Narrower than this (dp), the chart's hours and minute marks have no room, nor "Today" beside the heading. */
     const val WIDGET_CHART_MIN_WIDTH_DP = 200
 
-    /** The widget's left and right padding together (dp): the chart is that much narrower than the widget. */
-    const val WIDGET_SIDES_DP = 32
+    /** The total's type size (sp), and the least it's shrunk to on a narrow widget before it's cut. */
+    const val WIDGET_TOTAL_SP = 30f
+    const val WIDGET_TOTAL_MIN_SP = 10f
+
+    /** The card's padding (dp), sides and then top and bottom: a single row keeps its little height for the total. */
+    fun widgetPaddingDp(look: WidgetLook): Pair<Int, Int> = if (look.compact) 14 to 4 else 16 to 14
+
+    /**
+     * The most a widget's picture may hold (pixels): Android refuses a
+     * widget whose pictures come to more than a screen and a half, and a
+     * widget may send two (upright and on its side). Far more than any
+     * phone's widget; a tablet's, resized to fill the screen, is past it.
+     */
+    const val WIDGET_PICTURE_MAX_PX = 1_500_000L
+
+    /** How much smaller than life a picture of `width` by `height` pixels is drawn (1: life size) to stay in that. */
+    fun widgetPictureScale(width: Int, height: Int): Float {
+        val px = width.toLong() * height
+        return if (px <= WIDGET_PICTURE_MAX_PX) 1f else kotlin.math.sqrt(WIDGET_PICTURE_MAX_PX.toDouble() / px).toFloat()
+    }
 
     /** The size taken for a widget whose launcher doesn't say (dp): the four cells by two it starts as. */
     const val WIDGET_DEFAULT_WIDTH_DP = 250
@@ -1669,13 +1692,9 @@ object Storage {
         val wide = widthDp >= WIDGET_CHART_MIN_WIDTH_DP
         val chart = wide && heightDp >= WIDGET_BASE_DP + WIDGET_CHART_DP
         val taken = WIDGET_BASE_DP + if (chart) WIDGET_CHART_DP else 0
-        return WidgetLook(false, chart, anyLimited && heightDp >= taken + WIDGET_LEGEND_DP, day = wide)
+        val legend = if (wide) WIDGET_LEGEND_DP else WIDGET_LEGEND_STACKED_DP
+        return WidgetLook(false, chart, anyLimited && heightDp >= taken + legend, day = wide)
     }
-
-    /** The chart's size in the widget (dp): what's left of it under the total, above the legend. Null without a chart. */
-    fun widgetChartDp(widthDp: Int, heightDp: Int, look: WidgetLook): Pair<Int, Int>? =
-        if (!look.chart) null
-        else (widthDp - WIDGET_SIDES_DP) to (heightDp - WIDGET_BASE_DP - (if (look.legend) WIDGET_LEGEND_DP else 0) - 6)
 
     /** The widget's size as the launcher gave it, or the size it starts as when it gave none (0). */
     fun widgetSizeDp(widthDp: Int, heightDp: Int): Pair<Int, Int> =

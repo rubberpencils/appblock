@@ -15,7 +15,4 @@
     <string name="widget_ask">Allow usage access in Moly to see your screen time here.</string>
     <!-- The same, on a widget one row high -->
     <string name="widget_ask_short">Allow usage access in Moly</string>
-    <!-- The made-up day in the widget's picture in the launcher's widget list -->
-    <string name="widget_preview_total">2 hours 5 minutes</string>
-    <string name="widget_preview_limited">Limited apps: 40 minutes</string>
 </resources>

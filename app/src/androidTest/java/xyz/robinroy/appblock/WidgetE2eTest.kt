@@ -9,17 +9,15 @@ import android.content.Intent
 import android.graphics.drawable.BitmapDrawable
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
-import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -53,6 +51,11 @@ import java.util.regex.Pattern
  * tested is the widget Android would put on any home screen, without
  * leaving one on the emulator's: a widget's views say they are Moly's,
  * and one left behind would look like Moly on screen to every later test.
+ *
+ * The widget's face is a picture the app draws, so its words aren't on
+ * screen as text: the tests read what the picture says to TalkBack (on
+ * screen), what the app drew into it (ScreenTimeWidget.drawnForTests),
+ * and its size.
  */
 @RunWith(AndroidJUnit4::class)
 class WidgetE2eTest {
@@ -73,13 +76,22 @@ class WidgetE2eTest {
 
     private val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     private val manager get() = AppWidgetManager.getInstance(ctx)
+    private val provider get() = ComponentName(ctx, ScreenTimeWidget::class.java)
     private val zone = ZoneId.systemDefault()
 
-    private fun size(widthDp: Int, heightDp: Int) = Bundle().apply {
-        putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, widthDp)
-        putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, widthDp)
-        putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, heightDp)
-        putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, heightDp)
+    /** A widget left placed by a run that was cut short goes first. */
+    @Before
+    fun noWidgetLeft() {
+        AppWidgetHost(ctx, HOST).deleteHost()
+        check(manager.getAppWidgetIds(provider).isEmpty()) { "a Moly widget is on the emulator's home screen: remove it" }
+    }
+
+    /** A widget's size as a launcher reports it: upright it's `minWidth` by `maxHeight`, on its side `maxWidth` by `minHeight`. */
+    private fun size(minWidth: Int, maxHeight: Int, maxWidth: Int = minWidth, minHeight: Int = maxHeight) = Bundle().apply {
+        putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, minWidth)
+        putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, maxWidth)
+        putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, minHeight)
+        putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, maxHeight)
     }
 
     /**
@@ -88,11 +100,9 @@ class WidgetE2eTest {
      */
     private fun place(widthDp: Int, heightDp: Int): Int {
         shell("appwidget grantbind --package ${ctx.packageName} --user 0")
-        val hosting = AppWidgetHost(ctx, 0x4d6f).also { host = it }
-        // One left by a run that was cut short goes first.
-        hosting.deleteHost()
+        val hosting = AppWidgetHost(ctx, HOST).also { host = it }
         val id = hosting.allocateAppWidgetId()
-        check(manager.bindAppWidgetIdIfAllowed(id, ComponentName(ctx, ScreenTimeWidget::class.java), size(widthDp, heightDp))) {
+        check(manager.bindAppWidgetIdIfAllowed(id, provider, size(widthDp, heightDp))) {
             "Android didn't let the test place the widget"
         }
         hosting.startListening()
@@ -109,28 +119,30 @@ class WidgetE2eTest {
     }
 
     /** The user drags the widget's corner: the launcher tells Android its new size, and lays it out at it. */
-    private fun resize(id: Int, widthDp: Int, heightDp: Int) {
-        manager.updateAppWidgetOptions(id, size(widthDp, heightDp))
+    private fun resize(id: Int, widthDp: Int, heightDp: Int, options: Bundle = size(widthDp, heightDp)) {
+        manager.updateAppWidgetOptions(id, options)
         instrumentation.runOnMainSync {
             widget!!.layoutParams = FrameLayout.LayoutParams(Ui.dp(ctx, widthDp), Ui.dp(ctx, heightDp), Gravity.CENTER)
         }
     }
 
-    /** What the placed widget holds now, on screen or not: its texts, and which parts show. */
-    private class Held(val total: String, val limited: String?, val chart: BitmapDrawable?, val asks: Boolean)
+    /** What the app last drew on the widget: its texts in order, and "[chart]" for the chart. */
+    private fun drawn(id: Int): List<String> = ScreenTimeWidget.drawnForTests[id].orEmpty()
 
-    private fun held(): Held {
-        lateinit var out: Held
+    /** The picture the placed widget holds now (on screen or not): its width and height in pixels. */
+    private fun picture(): Pair<Int, Int>? {
+        var out: Pair<Int, Int>? = null
         instrumentation.runOnMainSync {
-            val w = widget!!
-            fun shows(id: Int) = w.findViewById<View>(id)?.visibility == View.VISIBLE
-            out = Held(
-                if (shows(R.id.widget_total)) w.findViewById<TextView>(R.id.widget_total).text.toString() else "",
-                if (shows(R.id.widget_legend)) w.findViewById<TextView>(R.id.widget_limited).text.toString() else null,
-                if (shows(R.id.widget_chart)) w.findViewById<ImageView>(R.id.widget_chart).drawable as? BitmapDrawable else null,
-                shows(R.id.widget_ask))
+            val bitmap = (widget!!.findViewById<ImageView>(R.id.widget_picture)?.drawable as? BitmapDrawable)?.bitmap
+            out = bitmap?.let { it.width to it.height }
         }
         return out
+    }
+
+    /** The picture's size for a widget of `widthDp` by `heightDp`: the widget less its card's padding, at life size. */
+    private fun pictureOf(widthDp: Int, heightDp: Int): Pair<Int, Int> {
+        val (side, edge) = Storage.widgetPaddingDp(Storage.widgetLook(widthDp, heightDp, true))
+        return Ui.dp(ctx, widthDp - 2 * side) to Ui.dp(ctx, heightDp - 2 * edge)
     }
 
     /** `pkg` on screen from `from` to `to` minutes ago. */
@@ -145,78 +157,88 @@ class WidgetE2eTest {
         return Storage.fmtScreenTime(Storage.screenTimeMs(sessions, from, to))
     }
 
+    private fun String.lower() = replaceFirstChar { it.lowercase() }
+
     @Test
     fun widget_showsToday_fitsItsSize_andOpensTheUsagePage() {
         freshState(mapOf(CLOCK to Rule(allowMin = 30, windowMin = 1440)))
         // Clock (limited) for 20 minutes, then Phone for 10.
         val seeded = listOf(ago(CLOCK, 50, 30), ago(PHONE, 15, 5))
         History.insertForTests(ctx, seeded)
+        val total = today(seeded)
+        val limited = "Limited apps: " + today(seeded.filter { it.pkg == CLOCK }).lower()
+        val says = "Screen time today: ${total.lower()}. $limited."
         val id = place(300, 200)
 
-        // Four cells by two or so: the total, the day's chart, the limited apps' time.
-        E2e.waitForFresh(text("Screen time"))
-        E2e.waitForFresh(text("Today"))
-        E2e.waitForFresh(text(today(seeded)))
-        val limited = "Limited apps: " + today(seeded.filter { it.pkg == CLOCK }).replaceFirstChar { it.lowercase() }
-        E2e.waitForFresh(text(limited))
-        E2e.waitForFresh(By.desc("Screen time today: ${today(seeded).replaceFirstChar { it.lowercase() }}. $limited."))
-        val chart = held().chart
-        assertTrue("no chart in a widget with room for one", chart != null)
-        assertEquals("the chart is drawn at the widget's width, less its padding",
-            Ui.dp(ctx, 300 - Storage.WIDGET_SIDES_DP), chart!!.bitmap.width)
+        // Four cells by two or so: the heading, the total, the day's chart, the limited apps' time.
+        E2e.waitForFresh(By.desc(says))
+        assertEquals(listOf("SCREEN TIME", "Today", total, "[chart]", limited), drawn(id))
+        assertEquals("the picture is the widget's size, less its card's padding", pictureOf(300, 200), picture())
 
-        // Made two cells by one: the total alone, still on its one line.
+        // Made two cells by one: the total alone. It still says all of it.
         resize(id, 110, 40)
-        assertTrue("a small widget kept its chart or legend",
-            E2e.eventually { held().let { it.chart == null && it.limited == null && it.total == today(seeded) } })
-        E2e.waitForFresh(text(today(seeded)))
-        assertFalse(appears(text(limited), timeout = 500))
+        assertTrue("a one-row widget drew ${drawn(id)}, its picture ${picture()}",
+            E2e.eventually { drawn(id) == listOf(total) && picture() == pictureOf(110, 40) })
+        E2e.waitForFresh(By.desc(says))
 
-        // And back, taller than before: all of it again.
-        resize(id, 300, 260)
-        assertTrue(E2e.eventually { held().let { it.chart != null && it.limited == limited } })
+        // Two cells wide, taller: no room for a chart's marks, or for "Today" beside the heading,
+        // and the limited apps' time goes under its name.
+        resize(id, 150, 220)
+        assertTrue("a narrow widget drew ${drawn(id)}", E2e.eventually {
+            drawn(id) == listOf("SCREEN TIME", total, "Limited apps", today(seeded.filter { it.pkg == CLOCK }))
+        })
+
+        // A launcher that gives one size upright and another on its side gets a picture for each;
+        // upright (as here) it's the narrow, tall one.
+        resize(id, 300, 260, size(minWidth = 300, maxHeight = 260, maxWidth = 420, minHeight = 120))
+        assertTrue("upright, the widget drew ${drawn(id)}, its picture ${picture()}", E2e.eventually {
+            drawn(id) == listOf("SCREEN TIME", "Today", total, "[chart]", limited) && picture() == pictureOf(300, 260)
+        })
 
         // A tap anywhere on it opens the Usage page, on today.
-        E2e.waitForFresh(text(today(seeded))).click()
+        E2e.waitForFresh(By.desc(says)).click()
         waitFor(text("Apps"))
         E2e.waitForFresh(By.desc("Today, pick a day"))
-        E2e.waitForFresh(text(today(seeded)))
+        E2e.waitForFresh(text(total))
     }
 
     @Test
     fun widget_keepsUp_asAppsComeAndGo() {
         freshState(mapOf(CLOCK to Rule(allowMin = 30, windowMin = 1440)))
         val seeded = listOf(ago(CLOCK, 50, 30))
+        val more = seeded + ago(PHONE, 15, 5)
+        val (before, after) = today(seeded) to today(more)
+        // (In the day's first minutes neither is in today yet, and there'd be nothing to see change.)
+        assumeTrue("too soon after midnight to tell $before from $after", before != after)
         History.insertForTests(ctx, seeded)
-        place(300, 200)
-        assertTrue(E2e.eventually { held().total == today(seeded) })
+        val id = place(300, 200)
+        assertTrue(E2e.eventually { before in drawn(id) })
 
         // More screen time is in the history, and an app comes on screen: the
         // blocker sees that, and the widget is shown afresh by itself.
-        val more = seeded + ago(PHONE, 15, 5)
         History.insertForTests(ctx, more)
         openApp(CLOCK)
-        assertTrue("the widget still says ${held().total}, not ${today(more)}",
-            E2e.eventually { held().total == today(more) })
+        assertTrue("the widget still shows ${drawn(id)}, not $after", E2e.eventually { after in drawn(id) })
     }
 
     @Test
     fun withoutUsageAccess_theWidgetSaysSo_andOpensMoly() {
         freshState()
         shell("appops set ${ctx.packageName} GET_USAGE_STATS deny")
-        place(300, 200)
-        E2e.waitForFresh(textContains("Allow usage access in Moly"))
-        assertTrue(held().let { it.asks && it.total.isEmpty() && it.chart == null })
+        val ask = "Allow usage access in Moly to see your screen time here."
+        val id = place(300, 200)
+        E2e.waitForFresh(By.desc(ask))
+        assertEquals(listOf("SCREEN TIME", ask), drawn(id))
 
         // A tap opens Moly, whose home screen has the way to allow it.
-        waitFor(textContains("Allow usage access in Moly")).click()
+        waitFor(By.desc(ask)).click()
         waitFor(text("Block an app"))
         waitFor(textContains("Allow usage access for your daily screen time"))
 
-        // Allowed: the numbers are there the next time it's shown.
+        // Allowed, and Moly left: the numbers are there.
         shell("appops set ${ctx.packageName} GET_USAGE_STATS allow")
-        ScreenTimeWidget.refresh(ctx)
-        assertTrue(E2e.eventually { held().let { !it.asks && it.total == "0 minutes" } })
+        device.pressHome()
+        assertTrue("the widget still shows ${drawn(id)}", E2e.eventually { drawn(id) == listOf("SCREEN TIME", "Today", "0 minutes", "[chart]") })
     }
 
     @Test
@@ -234,7 +256,11 @@ class WidgetE2eTest {
             appears(By.pkg(launcher).text(Pattern.compile("add.*", Pattern.CASE_INSENSITIVE))))
         device.pressBack()
         waitFor(text("Apps"))
-        assertEquals("a widget was placed", 0,
-            manager.getAppWidgetIds(ComponentName(ctx, ScreenTimeWidget::class.java)).size)
+        assertEquals("a widget was placed", 0, manager.getAppWidgetIds(provider).size)
+    }
+
+    private companion object {
+        /** The test's own widget host: any number no launcher uses. */
+        const val HOST = 0x4d6f
     }
 }

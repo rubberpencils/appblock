@@ -3,7 +3,6 @@ package xyz.robinroy.appblock
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
@@ -35,8 +34,11 @@ class WidgetTest {
         assertEquals(look(chart = true, legend = false), Storage.widgetLook(250, 152, true))
         assertEquals(look(chart = true, legend = false), Storage.widgetLook(250, 173, true))
         assertEquals(look(chart = true, legend = true), Storage.widgetLook(250, 174, true))
-        // Too narrow for a chart's marks, however tall, or for "Today" beside the heading.
+        // Too narrow for a chart's marks, however tall, or for "Today" beside the heading;
+        // the limited apps' line is two there, and needs their height.
         assertEquals(look(chart = false, legend = true, day = false), Storage.widgetLook(199, 400, true))
+        assertEquals(look(chart = false, legend = false, day = false), Storage.widgetLook(150, 129, true))
+        assertEquals(look(chart = false, legend = true, day = false), Storage.widgetLook(150, 130, true))
         assertEquals(look(chart = true, legend = true), Storage.widgetLook(200, 400, true))
         // No app limited: no line about limited apps.
         assertEquals(look(chart = true, legend = false), Storage.widgetLook(300, 400, false))
@@ -44,15 +46,20 @@ class WidgetTest {
     }
 
     @Test
-    fun `the chart takes what the total and the line leave`() {
-        assertEquals(218 to 56, Storage.widgetChartDp(250, 152, WidgetLook(false, chart = true, legend = false, day = true)))
-        assertEquals(268 to 82, Storage.widgetChartDp(300, 200, WidgetLook(false, chart = true, legend = true, day = true)))
-        assertNull(Storage.widgetChartDp(300, 200, WidgetLook(false, chart = false, legend = true, day = true)))
-        // Whatever the size, a chart that's shown has some height.
-        for (h in 0..600) for (limited in listOf(true, false)) {
-            val look = Storage.widgetLook(300, h, limited)
-            Storage.widgetChartDp(300, h, look)?.let { assertTrue("$h dp high: $it", it.second >= 56) }
-        }
+    fun `the card's padding leaves a single row its height, and a huge picture is drawn smaller`() {
+        assertEquals(16 to 14, Storage.widgetPaddingDp(Storage.widgetLook(300, 200, true)))
+        assertEquals(14 to 4, Storage.widgetPaddingDp(Storage.widgetLook(300, 40, true)))
+        // Whatever the size, what's left inside the padding is something to draw in.
+        for (h in 40..600) Storage.widgetLook(110, h, true).let { assertTrue(h - 2 * Storage.widgetPaddingDp(it).second >= 32) }
+        // A phone's widget at life size; a tablet's full screen within what Android takes.
+        assertEquals(1f, Storage.widgetPictureScale(964, 580))
+        assertEquals(1f, Storage.widgetPictureScale(1500, 1000))
+        val scale = Storage.widgetPictureScale(2400, 1500)
+        assertTrue(scale < 1f)
+        assertTrue((2400 * scale).toLong() * (1500 * scale).toLong() <= Storage.WIDGET_PICTURE_MAX_PX)
+        assertTrue("barely smaller than it must be", 2400 * scale * 1500 * scale > Storage.WIDGET_PICTURE_MAX_PX * 0.99)
+        // Sizes that would overflow an Int multiplied.
+        assertTrue(Storage.widgetPictureScale(100_000, 100_000) > 0f)
     }
 
     @Test
@@ -101,7 +108,7 @@ class WidgetTest {
     }
 
     @Test
-    fun `the widget's layouts exist, and hold every view the app fills in`() {
+    fun `the widget's layouts exist, and its own holds the views the app fills in`() {
         for (key in listOf("initialLayout", "previewLayout")) {
             val layout = info.attr(key)
             assertTrue("$key is $layout", layout.startsWith("@layout/"))
@@ -109,13 +116,11 @@ class WidgetTest {
         }
         assertEquals("@layout/widget_screen_time", info.attr("initialLayout"))
         val layout = parse("src/main/res/layout/widget_screen_time.xml")
-        val ids = (listOf(layout) + layout.all("*")).map { it.attr("id").removePrefix("@+id/") }.filter { it.isNotEmpty() }.toSet()
-        assertEquals(setOf("widget_root", "widget_eyebrow", "widget_day", "widget_total", "widget_ask", "widget_chart",
-            "widget_legend", "widget_limited"), ids)
-        // The one-row layout: the total alone.
-        val small = parse("src/main/res/layout/widget_screen_time_small.xml")
-        assertEquals("@+id/widget_root", small.attr("id"))
-        assertEquals(listOf("@+id/widget_total"), small.all("*").map { it.attr("id") })
+        // The card and its one picture.
+        assertEquals("@+id/widget_root", layout.attr("id"))
+        assertEquals(listOf("@+id/widget_picture"), layout.all("*").map { it.attr("id") })
+        // The picture keeps its shape whatever size the launcher gives it: never stretched.
+        assertEquals("fitStart", layout.all("ImageView").single().attr("scaleType"))
     }
 
     @Test

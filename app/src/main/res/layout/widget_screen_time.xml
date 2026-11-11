@@ -1,122 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The home-screen widget (ScreenTimeWidget): today's screen time, as the
-     home screen's card has it, in the same type and colors. Android draws
-     it inside the launcher from this file, so it is a layout file, unlike
-     the app's own screens, and holds only what a widget may: text and
-     pictures. The chart is a picture the app draws (the same UsageChartView);
-     it and the legend are left out when the widget is too small for them
-     (Storage.widgetLook). Empty here: the app fills it in. -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- The home-screen widget (ScreenTimeWidget). Android draws a widget
+     inside the launcher from a layout file, unlike the app's own screens,
+     and the launcher won't load an app's fonts for it: so this holds only
+     the card and one picture, which the app draws with its own type and
+     chart at the widget's size. The picture keeps its shape if the
+     launcher gives the widget another size than it said (fitStart). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:orientation="vertical"
     android:paddingStart="16dp"
     android:paddingTop="14dp"
     android:paddingEnd="16dp"
     android:paddingBottom="14dp">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <TextView
-            android:id="@+id/widget_eyebrow"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:fontFamily="@font/jakarta_semibold"
-            android:includeFontPadding="false"
-            android:letterSpacing="0.14"
-            android:maxLines="1"
-            android:text="@string/widget_eyebrow"
-            android:textColor="@color/muted"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_day"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/jakarta_semibold"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:paddingStart="8dp"
-            android:textColor="@color/muted"
-            android:textSize="12sp" />
-    </LinearLayout>
-
-    <!-- The total, in the serif; it shrinks to stay on one line in a narrow widget. -->
-    <TextView
-        android:id="@+id/widget_total"
-        android:layout_width="match_parent"
-        android:layout_height="38dp"
-        android:layout_marginTop="2dp"
-        android:autoSizeMaxTextSize="30sp"
-        android:autoSizeMinTextSize="13sp"
-        android:autoSizeStepGranularity="1sp"
-        android:autoSizeTextType="uniform"
-        android:fontFamily="@font/instrument_serif"
-        android:gravity="center_vertical"
-        android:includeFontPadding="false"
-        android:letterSpacing="-0.02"
-        android:maxLines="1"
-        android:textColor="@color/ink" />
-
-    <!-- Without usage access: what to do about it, in place of the numbers. -->
-    <TextView
-        android:id="@+id/widget_ask"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:ellipsize="end"
-        android:fontFamily="@font/jakarta_regular"
-        android:gravity="center_vertical"
-        android:includeFontPadding="false"
-        android:lineSpacingMultiplier="1.3"
-        android:text="@string/widget_ask"
-        android:textColor="@color/ink"
-        android:textSize="13sp"
-        android:visibility="gone" />
-
     <ImageView
-        android:id="@+id/widget_chart"
+        android:id="@+id/widget_picture"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginTop="6dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:importantForAccessibility="no"
-        android:scaleType="fitXY"
-        android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/widget_legend"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageView
-            android:layout_width="9dp"
-            android:layout_height="9dp"
-            android:importantForAccessibility="no"
-            android:src="@drawable/widget_dot" />
-
-        <TextView
-            android:id="@+id/widget_limited"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:fontFamily="@font/jakarta_regular"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:paddingStart="7dp"
-            android:textColor="@color/muted"
-            android:textSize="12sp" />
-    </LinearLayout>
-</LinearLayout>
+        android:scaleType="fitStart" />
+</FrameLayout>
