@@ -8,17 +8,24 @@ import androidx.test.uiautomator.Until
 import xyz.robinroy.appblock.E2e.CLOCK
 import xyz.robinroy.appblock.E2e.YOUTUBE
 import xyz.robinroy.appblock.E2e.appears
+import xyz.robinroy.appblock.E2e.blockerReads
 import xyz.robinroy.appblock.E2e.ctx
 import xyz.robinroy.appblock.E2e.device
+import xyz.robinroy.appblock.E2e.deviceName
 import xyz.robinroy.appblock.E2e.eventually
+import xyz.robinroy.appblock.E2e.forgetWifiNetwork
 import xyz.robinroy.appblock.E2e.freshState
+import xyz.robinroy.appblock.E2e.languages
 import xyz.robinroy.appblock.E2e.limitFields
 import xyz.robinroy.appblock.E2e.min
 import xyz.robinroy.appblock.E2e.openApp
 import xyz.robinroy.appblock.E2e.openHome
 import xyz.robinroy.appblock.E2e.pressOk
+import xyz.robinroy.appblock.E2e.saveWifiNetwork
 import xyz.robinroy.appblock.E2e.seedUsage
 import xyz.robinroy.appblock.E2e.setBlocker
+import xyz.robinroy.appblock.E2e.setDeviceName
+import xyz.robinroy.appblock.E2e.setLanguages
 import xyz.robinroy.appblock.E2e.shell
 import xyz.robinroy.appblock.E2e.strictOn
 import xyz.robinroy.appblock.E2e.text
@@ -28,6 +35,7 @@ import xyz.robinroy.appblock.E2e.wallText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -35,8 +43,9 @@ import org.junit.runner.RunWith
 /**
  * Strict mode, end to end: turned on through the system's device admin
  * page, the wall over the system pages that could switch the blocker off
- * or uninstall Moly (and not over the rest of Settings), limits that
- * only get stricter, and every way out: the cooldown, plugging in, the
+ * or uninstall Moly (and not over the rest of Settings: a longer word
+ * holding its letters, or a Wi-Fi page listing a network called Moly),
+ * limits that only get stricter, and every way out: the cooldown, plugging in, the
  * emergency pass that opens the blocked apps without ending it, adb, and
  * the admin found switched off (safe mode, and back from it).
  */
@@ -52,6 +61,26 @@ class StrictE2eTest {
         shell("dumpsys battery reset")
         device.findObject(text("Go to home screen"))?.click()
         device.pressHome()
+    }
+
+    // What a test changed on the emulator itself (its name, its saved Wi-Fi
+    // networks, its language), put back whether the test passed or not.
+    private var deviceNameWas: String? = null
+    private var deviceNamed = false
+    private val networksSaved = mutableListOf<String>()
+    private var languagesWere: String? = null
+
+    @get:Rule(order = 0)
+    val putBack = E2e.Cleanup {
+        try {
+            languagesWere?.let { check(setLanguages(it)) { "the language wasn't put back to $it" } }
+        } finally {
+            try {
+                if (deviceNamed) setDeviceName(deviceNameWas)
+            } finally {
+                networksSaved.forEach(::forgetWifiNetwork)
+            }
+        }
     }
 
     @get:Rule(order = 1)
@@ -140,6 +169,156 @@ class StrictE2eTest {
         assertTrue(appears(By.pkg(settings)))
         Thread.sleep(1500)   // longer than the wall ever takes (it went up in ~150 ms above)
         assertEquals(null, wallText(settings))
+    }
+
+    // ---- the name as a word, and the Wi-Fi and Bluetooth pages ----
+
+    private val aboutPhone get() = Intent(android.provider.Settings.ACTION_DEVICE_INFO_SETTINGS)
+
+    // Settings > Network & internet > Internet > Saved networks: every
+    // network the phone remembers, in range or not, Wi-Fi on or off.
+    private val savedNetworks get() = Intent("android.settings.WIFI_SAVED_NETWORK_SETTINGS")
+
+    /** Name the phone, as on About phone > Device name; its old name comes back after the test. */
+    private fun nameDevice(name: String) {
+        if (!deviceNamed) {
+            deviceNameWas = deviceName()
+            deviceNamed = true
+        }
+        setDeviceName(name)
+    }
+
+    /** A Wi-Fi network called `ssid` among the saved ones, forgotten after the test. Skips the test where none can be saved. */
+    private fun rememberNetwork(ssid: String) {
+        assumeTrue("no Saved networks page on this device",
+            ctx.packageManager.resolveActivity(savedNetworks, 0) != null)
+        networksSaved += ssid
+        assumeTrue("this device won't save a Wi-Fi network", saveWifiNetwork(ssid))
+    }
+
+    /** Whether the blocker itself reads `text`, whole, somewhere on `pkg`'s screen: it's there for it to find. */
+    private fun blockerSees(pkg: String, text: String) =
+        eventually { blockerReads(pkg).any { (_, texts) -> text in texts } }
+
+    /** The title of `pkg`'s page, as the blocker is told it; null without one. */
+    private fun pageTitle(pkg: String): String? = blockerReads(pkg).firstOrNull()?.first
+
+    /**
+     * No wall over `pkg` at any moment of the next two seconds, checked ten
+     * times a second: a wall is up within ~150 ms of the page it's for, and
+     * one that flashed up and went would be caught too.
+     */
+    private fun staysOpen(pkg: String): Boolean {
+        val until = System.currentTimeMillis() + 2_000
+        while (System.currentTimeMillis() < until) {
+            if (wallText(pkg) != null) return false
+            Thread.sleep(100)
+        }
+        return true
+    }
+
+    /**
+     * Moly's App info, opened over the page `pkg` is showing, as a tap on
+     * a link inside Settings would: from the shell, whose launch joins
+     * Settings' task (an app's own, openPage, starts the task afresh).
+     */
+    private fun openAppInfoOver(pkg: String) {
+        val under = pageTitle(pkg)
+        shell("am start -a ${appInfo.action} -d ${appInfo.data}")
+        // Where Android only brought Settings forward as it was (E2e.closeTask
+        // says when), App info opens the plain way: still straight from that page.
+        if (!eventually(3_000) { pageTitle(pkg) != under }) openPage(appInfo)
+        assertTrue("App info didn't open", eventually { pageTitle(pkg) != under })
+    }
+
+    private fun leaveSettings(pkg: String) {
+        device.pressHome()
+        assertTrue("$pkg stayed on screen", device.wait(Until.gone(By.pkg(pkg)), E2e.WAIT))
+    }
+
+    @Test
+    fun aLongerWordHoldingTheName_isNotWalled_theNameAsAWordIs() {
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN)
+        val about = handler(aboutPhone)
+
+        // About phone shows the phone's own name. "Molyneux" has Moly's
+        // letters in it, and isn't Moly's name.
+        nameDevice("Molyneux")
+        openPage(aboutPhone)
+        assertTrue("About phone doesn't show the phone's name", blockerSees(about, "Molyneux"))
+        assertTrue("walled for a longer word holding the name", staysOpen(about))
+        leaveSettings(about)
+
+        // The same page, the name now a word of its own: off the Wi-Fi and
+        // Bluetooth pages, nothing tells a phone called Moly from the app.
+        nameDevice("Holy Moly")
+        openPage(aboutPhone)
+        assertTrue("About phone naming Moly isn't walled", strictWallOver(about))
+    }
+
+    @Test
+    fun aWifiPageListingANetworkCalledMoly_isNotWalled() {
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN)
+        // Networks other people named: one is Moly's name to the letter.
+        rememberNetwork("Moly")
+        rememberNetwork("Holy Moly")
+        val wifi = handler(savedNetworks)
+
+        openPage(savedNetworks)
+        assertTrue("Saved networks doesn't list Moly", blockerSees(wifi, "Moly"))
+        assertTrue("Saved networks doesn't list Holy Moly", blockerSees(wifi, "Holy Moly"))
+        assertTrue("a Wi-Fi page was walled for a network's name", staysOpen(wifi))
+    }
+
+    @Test
+    fun fromAWifiPage_onToMolysAppInfo_isWalled() {
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN)
+        rememberNetwork("Moly")
+        val wifi = handler(savedNetworks)
+        E2e.closeTask(wifi)
+        openPage(savedNetworks)
+        assertTrue("Saved networks doesn't list Moly", blockerSees(wifi, "Moly"))
+        assertTrue("a Wi-Fi page was walled for a network's name", staysOpen(wifi))
+
+        // On to Moly's App info without leaving Settings, the Wi-Fi page
+        // still under it: being let off there earns this page nothing.
+        assertEquals(wifi, handler(appInfo))
+        openAppInfoOver(wifi)
+        assertTrue("App info, after a Wi-Fi page, isn't walled", strictWallOver(wifi))
+        // And the wall holds while Settings stays on screen.
+        Thread.sleep(2000)
+        assertTrue("the wall over App info went", wallText(wifi)?.any { it.startsWith("Strict mode") } == true)
+    }
+
+    @Test
+    fun inAnotherLanguage_theWifiPagesAreStillKnown_andAppInfoStillWalled() {
+        freshState()
+        strictOn(Storage.WayOut.COOLDOWN)
+        rememberNetwork("Moly")
+        val wifi = handler(savedNetworks)
+        openPage(savedNetworks)
+        assertTrue("Saved networks doesn't list Moly", blockerSees(wifi, "Moly"))
+        val inEnglish = pageTitle(wifi)
+        assertTrue("a Wi-Fi page was walled for a network's name", staysOpen(wifi))
+        leaveSettings(wifi)
+
+        // The phone's language changed while the blocker runs, as from
+        // Settings > System > Languages: the pages' titles change with it.
+        languagesWere = languages()
+        assumeTrue("the language can't be switched from a test on this device", setLanguages("de-DE"))
+        openPage(savedNetworks)
+        assertTrue("Saved networks doesn't list Moly", blockerSees(wifi, "Moly"))
+        val inGerman = pageTitle(wifi)
+        assumeTrue("Settings isn't in German on this device (its title is still $inGerman)",
+            inGerman != null && inGerman != inEnglish)
+        assertTrue("the Wi-Fi page \"$inGerman\" was walled for a network's name", staysOpen(wifi))
+
+        // And the pages that switch Moly off are walled in German as in English.
+        openAppInfoOver(wifi)
+        assertTrue("App info isn't walled in German", strictWallOver(handler(appInfo)))
     }
 
     @Test

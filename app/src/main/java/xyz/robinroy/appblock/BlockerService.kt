@@ -82,6 +82,8 @@ class BlockerService : AccessibilityService() {
     // The system apps strict mode guards (Settings, the package installer,
     // the permission controller), found when the service starts.
     private var guarded = emptySet<String>()
+    // Their Wi-Fi and Bluetooth pages, by title: not searched for Moly's name.
+    private var connectivityTitles = emptySet<String>()
     // While strict mode is on: the guarded apps, whose windows are read for
     // Moly's name the moment they change.
     private var strictWatch = emptySet<String>()
@@ -118,6 +120,7 @@ class BlockerService : AccessibilityService() {
         // Strict mode's countdowns were cleared with the rest: back up they go.
         Strict.renotify(this)
         guarded = Strict.guardedPackages(this)
+        connectivityTitles = Strict.connectivityTitles(this, guarded)
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -294,15 +297,24 @@ class BlockerService : AccessibilityService() {
         handler.post { refresh() }
     }
 
+    /** The phone's language may have changed: the Wi-Fi and Bluetooth pages' titles with it. */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        connectivityTitles = Strict.connectivityTitles(this, guarded)
+    }
+
     /**
      * Whether any of `pkg`'s windows names Moly (Storage.namesApp): its
      * texts and content descriptions, read off the window's contents. Only
      * the guarded system apps are read, only while strict mode is on, and
-     * only for this one word; nothing is kept.
+     * only for this one word; nothing is kept. A Wi-Fi or Bluetooth page
+     * isn't read at all: the names on it are other people's.
      */
     private fun namesMoly(pkg: String): Boolean {
         val label = applicationInfo.loadLabel(packageManager).toString()
         return appRoots[pkg].orEmpty().any { root ->
+            val title = try { root.window?.title?.toString() } catch (e: Exception) { null }
+            if (Storage.isConnectivityPage(title, connectivityTitles)) return@any false
             val texts = mutableListOf<String>()
             val stack = ArrayDeque<AccessibilityNodeInfo>().apply { add(root) }
             var seen = 0

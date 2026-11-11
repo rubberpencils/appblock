@@ -76,6 +76,43 @@ object Strict {
         return (found + stock).toSet() - ctx.packageName - "android"
     }
 
+    // Android's Settings names the titles of its Wi-Fi and Bluetooth pages
+    // by these (its string resources), so they are read in the phone's
+    // language. A maker's Settings may name them differently: then only
+    // the English titles below are known, and in another language none.
+    //
+    // Careful adding a page here: strict mode stops looking at it, so it
+    // must be one with no list of apps and nothing that switches an app off.
+    private val connectivityTitleNames = listOf(
+        "network_dashboard_title", "provider_internet_settings", "wifi_settings",
+        "wifi_saved_access_points_label",
+        "connected_devices_dashboard_title", "bluetooth_settings_title", "bluetooth_pairing_page_title",
+        "connected_device_saved_title", "connected_device_previously_connected_screen_title",
+        "device_details_title")
+    private val connectivityTitlesEnglish = listOf(
+        "Network & internet", "Internet", "Wi-Fi", "Saved networks",
+        "Connected devices", "Bluetooth", "Pair new device", "Saved devices", "Previously connected",
+        "Device details")
+
+    /**
+     * The titles of the guarded apps' Wi-Fi and Bluetooth pages, for
+     * Storage.isConnectivityPage: pages listing networks and devices by
+     * the names their owners gave them, which strict mode doesn't search
+     * for Moly's name.
+     */
+    fun connectivityTitles(ctx: Context, guarded: Set<String>): Set<String> {
+        val found = guarded.flatMap { pkg ->
+            try {
+                val res = ctx.packageManager.getResourcesForApplication(pkg)
+                connectivityTitleNames.mapNotNull { name ->
+                    @Suppress("DiscouragedApi") val id = res.getIdentifier(name, "string", pkg)
+                    if (id == 0) null else res.getString(id)
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+        return (found + connectivityTitlesEnglish).map(Storage::titleKey).filter { it.isNotEmpty() }.toSet()
+    }
+
     /** Whether the phone is plugged in: a full battery, or one held at 80%, still counts. */
     fun pluggedIn(ctx: Context): Boolean =
         (ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))

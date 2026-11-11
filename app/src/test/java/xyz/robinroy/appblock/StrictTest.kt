@@ -488,6 +488,63 @@ class StrictTest {
             assertFalse(page.toString(), Storage.namesApp(page, "Moly"))
     }
 
+    @Test
+    fun `the name counts as a word, not as letters inside another`() {
+        // A neighbour's network, another app, a word in another language.
+        for (text in listOf("Molyneux-5G", "Smolyak's AirPods", "Komoly veszélyek", "Molybdenum", "moly2go", "2moly"))
+            assertFalse(text, Storage.namesApp(listOf(text), "Moly"))
+        // Punctuation, spaces and the ends of the text set it apart.
+        for (text in listOf("Moly", "moly", "MOLY", "Stop Moly?", "Moly's storage", "Use Moly", "\"Moly\"",
+            "Uninstall Moly.", "Moly, 12 MB", "Moly shortcut", "(Moly)", "apps/Moly", "Moly-app"))
+            assertTrue(text, Storage.namesApp(listOf(text), "Moly"))
+        // Settings' own Korean and Japanese: a particle written straight after
+        // the name, in another script, is still the name ("Stop Moly?", "Use Moly").
+        for (text in listOf("Moly을(를) 중지하시겠습니까?", "중지를 탭하면 Moly이(가) 중지됩니다.", "Molyを使用", "Molyのショートカット"))
+            assertTrue(text, Storage.namesApp(listOf(text), "Moly"))
+        // Inside another word once, on its own later in the same text.
+        assertTrue(Storage.namesApp(listOf("Molyneux and Moly"), "Moly"))
+        assertFalse(Storage.namesApp(listOf("Molyneux and Smolyak"), "Moly"))
+    }
+
+    @Test
+    fun `something else called Moly reads the same as the app`() {
+        // No telling a device or a contact named Moly from the app by its text:
+        // off the Wi-Fi and Bluetooth pages, its page is walled too.
+        assertTrue(Storage.namesApp(listOf("Device name", "Holy Moly"), "Moly"))
+    }
+
+    @Test
+    fun `no name, nothing named`() {
+        assertFalse(Storage.namesApp(listOf("Moly", ""), ""))
+    }
+
+    // ---- the Wi-Fi and Bluetooth pages: other people's names ----
+
+    private val connectivity = setOf("Internet", "Wi‑Fi", "Connected devices", "Pair new device", "Bluetooth")
+        .map(Storage::titleKey).toSet()
+
+    @Test
+    fun `the Wi-Fi and Bluetooth pages aren't searched for the name`() {
+        for (title in listOf("Internet", "Connected devices", "Pair new device", "Bluetooth"))
+            assertTrue(title, Storage.isConnectivityPage(title, connectivity))
+    }
+
+    @Test
+    fun `a title matches whatever its case, hyphen or padding`() {
+        // Settings writes Wi‑Fi with a non-breaking hyphen; a maker might not.
+        for (title in listOf("Wi‑Fi", "Wi-Fi", "WI-FI", " wi‐fi "))
+            assertTrue(title, Storage.isConnectivityPage(title, connectivity))
+    }
+
+    @Test
+    fun `every other page is searched, and so is one with no title`() {
+        // Where the app can be switched off, and pages only resembling the Wi-Fi ones.
+        for (title in listOf("App info", "Accessibility", "Settings", "Moly", "Device admin apps",
+            "Wi-Fi data usage", "Internet usage", "Bluetooth permissions", "About phone", "", null))
+            assertFalse("$title", Storage.isConnectivityPage(title, connectivity))
+        assertFalse("no known titles", Storage.isConnectivityPage("Internet", emptySet()))
+    }
+
     private val settings = "com.android.settings"
     private val installer = "com.google.android.packageinstaller"
 

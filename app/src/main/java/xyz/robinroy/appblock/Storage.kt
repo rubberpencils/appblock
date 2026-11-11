@@ -881,12 +881,53 @@ object Storage {
 
     /**
      * Whether a system screen names the app (any of its texts holds `label`,
-     * "Moly"): its App info, its Accessibility switch and the "Stop
-     * Moly?" dialog, its storage, its device admin page, the uninstall
+     * "Moly", as a word): its App info, its Accessibility switch and the
+     * "Stop Moly?" dialog, its storage, its device admin page, the uninstall
      * dialog, Safety Center's "Remove access" card, and the lists that lead
-     * to them.
+     * to them. Anything else on a guarded page called Moly (a contact, a
+     * device's name) reads the same, and walls that page too.
      */
-    fun namesApp(texts: List<String>, label: String) = texts.any { it.contains(label, ignoreCase = true) }
+    fun namesApp(texts: List<String>, label: String): Boolean {
+        if (label.isEmpty()) return false
+        return texts.any { text ->
+            var at = text.indexOf(label, ignoreCase = true)
+            while (at >= 0) {
+                // The name as a word of its own ("Moly", "Stop Moly?", "Moly's"),
+                // not the same letters inside another ("Molyneux", "Komoly").
+                val before = text.getOrNull(at - 1)
+                val after = text.getOrNull(at + label.length)
+                if (!continuesWord(before, label.first()) && !continuesWord(after, label.last())) return@any true
+                at = text.indexOf(label, at + 1, ignoreCase = true)
+            }
+            false
+        }
+    }
+
+    /**
+     * Whether `c`, next to the name's letter `edge`, makes one longer word
+     * of them: a digit, or a letter of the same script. A letter of another
+     * script doesn't: Korean and Japanese write their particles straight
+     * after a name ("Moly을(를) 중지하시겠습니까?" is "Stop Moly?").
+     */
+    private fun continuesWord(c: Char?, edge: Char): Boolean = c != null && (c.isDigit() ||
+        (c.isLetter() && Character.UnicodeScript.of(c.code) == Character.UnicodeScript.of(edge.code)))
+
+    /**
+     * A page title in the form titles are compared in: case and the kind of
+     * hyphen ("Wi‑Fi" is written with a non-breaking one) set aside.
+     */
+    fun titleKey(title: String?): String =
+        title.orEmpty().trim().lowercase().replace('\u2011', '-').replace('\u2010', '-')
+
+    /**
+     * Whether a system page is one of the Wi-Fi and Bluetooth pages (`keys`,
+     * Strict.connectivityTitles, as titleKey gives them). Those list other
+     * people's names (networks, devices, "Holy Moly" among them) and hold
+     * no way to switch Moly off, so strict mode doesn't look for its name
+     * there. A page it can't tell is one of them is read like any other.
+     */
+    fun isConnectivityPage(title: String?, keys: Set<String>): Boolean =
+        titleKey(title).let { it.isNotEmpty() && it in keys }
 
     /**
      * The system apps to wall in strict mode: those on screen naming
