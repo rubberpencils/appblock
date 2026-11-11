@@ -42,9 +42,12 @@ class UsageActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.edgeToEdge(window)
-        val start = intent.getStringExtra(EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        // Where it was before Android built the screen again; else where the home screen's card was.
+        val start = ScreenTimeView.savedDay(savedInstanceState)
+            ?: intent.getStringExtra(EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val period = intent.getStringExtra(EXTRA_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
+        val period = ScreenTimeView.savedPeriod(savedInstanceState)
+            ?: intent.getStringExtra(EXTRA_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
         head = ScreenTimeView(this, start, startPeriod = period ?: Storage.Period.DAY) { s -> shown = s; showApps() }
         chips = linkedMapOf(Storage.UsageSort.TIME to chip("Time", Storage.UsageSort.TIME),
             Storage.UsageSort.NAME to chip("Name", Storage.UsageSort.NAME))
@@ -76,6 +79,11 @@ class UsageActivity : Activity() {
         }
         setContentView(scroll)
         paintChips()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        ScreenTimeView.save(head, outState)
     }
 
     /** A tap outside a chart's card puts the chart back (Readout). */

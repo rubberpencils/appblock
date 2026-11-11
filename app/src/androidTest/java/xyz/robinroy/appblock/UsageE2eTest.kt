@@ -47,6 +47,7 @@ class UsageE2eTest {
     val leave = E2e.Cleanup {
         History.autoSync = false
         shell("appops set ${ctx.packageName} GET_USAGE_STATS allow")
+        shell("cmd uimode night no")
         device.pressHome()
     }
 
@@ -435,6 +436,69 @@ class UsageE2eTest {
         E2e.waitForFresh(text("Yesterday"))
         E2e.waitForFresh(text("Busiest hour: 9 PM, 40 minutes"))
         E2e.waitForFresh(By.descStartsWith("Screen time, Yesterday: 55 minutes"))
+    }
+
+    @Test
+    fun arrows_stepAWeekAtATime_asFarAsTheHistoryGoes() {
+        seed()
+        val firstDow = WeekFields.of(Locale.getDefault()).firstDayOfWeek
+        val week = Storage.Period.WEEK
+        val yesterday = today.minusDays(1)
+        // Phone for 25 minutes a week before yesterday: the week before yesterday's has a history, the one before that none.
+        val weekBefore = yesterday.minusDays(7)
+        History.insertForTests(ctx, listOf(used(PHONE, weekBefore, 10, 0, 25)))
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        waitFor(text("Week")).click()
+        val from = Storage.periodTitle(week, yesterday, today, firstDow)
+        E2e.waitForFresh(text(from))
+
+        // Back a week: that week's name, and what was used in it.
+        assertTrue(E2e.eventually { device.findObject(By.desc("Previous week")).isEnabled })
+        waitFor(By.desc("Previous week")).click()
+        val to = Storage.periodTitle(week, weekBefore, today, firstDow)
+        E2e.waitForFresh(text(to))
+        // (The day before yesterday's five minutes are in it too, when yesterday began its week.)
+        val alsoIn = Storage.periodDays(week, yesterday.minusDays(1), firstDow) == Storage.periodDays(week, weekBefore, firstDow)
+        E2e.waitForFresh(By.descStartsWith("Screen time, $to: ${if (alsoIn) 30 else 25} minutes."))
+        // The history starts in it: no further back.
+        assertTrue(E2e.eventually { !device.findObject(By.desc("Previous week")).isEnabled })
+
+        // And forward again, to the week it came from.
+        waitFor(By.desc("Next week")).click()
+        E2e.waitForFresh(text(from))
+        E2e.waitForFresh(text("Busiest day: Yesterday, 55 minutes"))
+    }
+
+    @Test
+    fun whatsShowing_isKept_whenAndroidBuildsTheScreenAgain() {
+        seed()
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        waitFor(text("Week")).click()
+        val week = Seeded(Storage.Period.WEEK)
+        E2e.waitForFresh(By.desc(week.summary + " Busiest day: Yesterday, 55 minutes."))
+
+        // Dark mode switched on: Android throws the screen away and builds it
+        // again. It comes back on the same week, not on today.
+        shell("cmd uimode night yes")
+        assertFalse("the card went back to today", appears(By.desc("Today, pick a day"), timeout = 3_000))
+        E2e.waitForFresh(By.desc(week.summary + " Busiest day: Yesterday, 55 minutes."))
+        assertTrue(waitFor(text("Week")).isSelected)
+
+        // The Usage page, stepped to a month there, the same way.
+        waitFor(text("See apps")).click()
+        waitFor(text("Apps"))
+        waitFor(text("Month")).click()
+        val month = Seeded(Storage.Period.MONTH)
+        E2e.waitForFresh(By.desc(month.summary + " Busiest day: Yesterday, 55 minutes."))
+        shell("cmd uimode night no")
+        assertFalse("the page went back to the week it was opened on",
+            appears(By.desc("${week.title}, pick a day"), timeout = 3_000))
+        E2e.waitForFresh(By.desc(month.summary + " Busiest day: Yesterday, 55 minutes."))
+        assertTrue(waitFor(text("Month")).isSelected)
     }
 
     @Test

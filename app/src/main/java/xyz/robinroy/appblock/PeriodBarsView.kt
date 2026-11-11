@@ -14,7 +14,8 @@ import java.time.LocalDate
  * a year, a day's average in it), from Storage.PeriodStats. Each bar is
  * the limited apps in the accent with the other apps stacked on top in
  * the quiet neutral, the colors of the day's chart and its legend; the
- * days still to come are left blank. On the right, the time a bar
+ * days still to come are left blank, and so are those before the history
+ * began: neither can be read off. On the right, the time a bar
  * stands for, in round steps (Storage.barTicks); underneath, the days or
  * months (Storage.barLabels). A tap or a drag on it reads a bar off
  * exactly (Readout); `single` is one app's chart, one series, no names.
@@ -27,6 +28,7 @@ class PeriodBarsView(context: Context) : View(context) {
     private var single = false
     private var picked: Int? = null
     private var reveal = 1f
+    private var growing: ValueAnimator? = null
     private var slotW = 0f
     private var plotW = 0f
     private val bubble = Readout.Bubble(context)
@@ -55,8 +57,11 @@ class PeriodBarsView(context: Context) : View(context) {
         this.today = today
         this.single = single
         unpick()
+        // One still growing the last bars mustn't go on to shrink these.
+        growing?.cancel()
+        growing = null
         if (animate && Ui.motionOn(context)) {
-            ValueAnimator.ofFloat(0f, 1f).apply {
+            growing = ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = 450L
                 interpolator = Ui.settle
                 addUpdateListener { reveal = it.animatedValue as Float; invalidate() }
@@ -67,14 +72,15 @@ class PeriodBarsView(context: Context) : View(context) {
 
     private fun barMs(s: Storage.PeriodStats, i: Int) = s.limited[i] + s.other[i]
 
+    /** With nothing to read off (no screen time in it at all), a touch is the card's, not the chart's. */
     override fun onTouchEvent(e: MotionEvent): Boolean =
-        if (stats.let { it == null || it.known == 0 }) super.onTouchEvent(e) else touch.handle(e)
+        if (stats.let { it == null || it.totalMs <= 0L || it.since >= it.known }) super.onTouchEvent(e) else touch.handle(e)
 
-    /** The bar under `x`, if its day has come. */
+    /** The bar under `x`, or the nearest with a day the history has: from its first day to today. */
     private fun pick(x: Float) {
         val s = stats ?: return
-        if (slotW <= 0f || s.known == 0) return
-        val i = (x.coerceIn(0f, plotW - 1f) / slotW).toInt().coerceIn(0, s.known - 1)
+        if (slotW <= 0f || s.since >= s.known) return
+        val i = (x.coerceIn(0f, plotW - 1f) / slotW).toInt().coerceIn(s.since, s.known - 1)
         if (picked != i) {
             picked = i
             performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
