@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget made a single row high (Storage.widgetLook's `compact`):
+     there's room for one line, so it's the total alone, as large as fits. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:paddingStart="14dp"
+    android:paddingTop="4dp"
+    android:paddingEnd="14dp"
+    android:paddingBottom="4dp">
+
+    <TextView
+        android:id="@+id/widget_total"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:autoSizeMaxTextSize="30sp"
+        android:autoSizeMinTextSize="10sp"
+        android:autoSizeStepGranularity="1sp"
+        android:autoSizeTextType="uniform"
+        android:fontFamily="@font/instrument_serif"
+        android:gravity="center_vertical"
+        android:includeFontPadding="false"
+        android:letterSpacing="-0.02"
+        android:maxLines="1"
+        android:textColor="@color/ink" />
+</LinearLayout>

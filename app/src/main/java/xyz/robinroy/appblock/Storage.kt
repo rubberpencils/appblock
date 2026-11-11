@@ -1618,6 +1618,74 @@ object Storage {
     /** The widest a mark gets, for the room beside the chart. */
     const val WIDEST_BAR_TICK = "90 min"
 
+    // ---- the home-screen widget: today's screen time (ScreenTimeWidget) ----
+
+    /**
+     * What the widget has room for. `compact`: one line, the total alone,
+     * without its heading. Otherwise the heading and the total, and maybe
+     * the day's `chart` and the limited apps' line (`legend`); `day`: the
+     * word "Today" beside the heading, where the heading leaves room.
+     */
+    data class WidgetLook(val compact: Boolean, val chart: Boolean, val legend: Boolean, val day: Boolean)
+
+    /**
+     * The widget's padding, heading and total: what it always shows takes
+     * this much of its height (dp), with a little to spare for a launcher
+     * that gives a widget less room than it says.
+     */
+    const val WIDGET_BASE_DP = 90
+
+    /** The limited apps' line, and the chart at its shortest, each with the gap above it (dp). */
+    const val WIDGET_LEGEND_DP = 22
+    const val WIDGET_CHART_DP = 62
+
+    /** Narrower than this (dp), the chart's hours and minute marks have no room, nor "Today" beside the heading. */
+    const val WIDGET_CHART_MIN_WIDTH_DP = 200
+
+    /** The widget's left and right padding together (dp): the chart is that much narrower than the widget. */
+    const val WIDGET_SIDES_DP = 32
+
+    /** The size taken for a widget whose launcher doesn't say (dp): the four cells by two it starts as. */
+    const val WIDGET_DEFAULT_WIDTH_DP = 250
+    const val WIDGET_DEFAULT_HEIGHT_DP = 110
+
+    /**
+     * What the widget shows at `widthDp` by `heightDp` (the launcher says,
+     * as the user resizes it). The total always: alone on its line when
+     * the widget is too short for its heading too. The chart when it can
+     * be read: wide enough for its marks, high enough to have a shape. The
+     * limited apps' line when there's a line to spare, the chart first,
+     * and only if any app is limited (`anyLimited`): "Limited apps: 0
+     * minutes" says nothing to someone who limits none.
+     */
+    fun widgetLook(widthDp: Int, heightDp: Int, anyLimited: Boolean): WidgetLook {
+        if (heightDp < WIDGET_BASE_DP) return WidgetLook(compact = true, chart = false, legend = false, day = false)
+        val wide = widthDp >= WIDGET_CHART_MIN_WIDTH_DP
+        val chart = wide && heightDp >= WIDGET_BASE_DP + WIDGET_CHART_DP
+        val taken = WIDGET_BASE_DP + if (chart) WIDGET_CHART_DP else 0
+        return WidgetLook(false, chart, anyLimited && heightDp >= taken + WIDGET_LEGEND_DP, day = wide)
+    }
+
+    /** The chart's size in the widget (dp): what's left of it under the total, above the legend. Null without a chart. */
+    fun widgetChartDp(widthDp: Int, heightDp: Int, look: WidgetLook): Pair<Int, Int>? =
+        if (!look.chart) null
+        else (widthDp - WIDGET_SIDES_DP) to (heightDp - WIDGET_BASE_DP - (if (look.legend) WIDGET_LEGEND_DP else 0) - 6)
+
+    /** The widget's size as the launcher gave it, or the size it starts as when it gave none (0). */
+    fun widgetSizeDp(widthDp: Int, heightDp: Int): Pair<Int, Int> =
+        (if (widthDp > 0) widthDp else WIDGET_DEFAULT_WIDTH_DP) to (if (heightDp > 0) heightDp else WIDGET_DEFAULT_HEIGHT_DP)
+
+    /** The widget's legend: "Limited apps: 40 minutes". */
+    fun widgetLimited(limitedMs: Long): String = "Limited apps: " + fmtScreenTime(limitedMs).replaceFirstChar { it.lowercase() }
+
+    /** The widget, said aloud: "Screen time today: 2 hours 5 minutes. Limited apps: 40 minutes." */
+    fun widgetSummary(totalMs: Long, limitedMs: Long, anyLimited: Boolean): String =
+        "Screen time today: ${fmtScreenTime(totalMs).replaceFirstChar { it.lowercase() }}." +
+            if (anyLimited) " ${widgetLimited(limitedMs)}." else ""
+
+    /** The screen changing (an app opened, left) shows the widget afresh this long after: once for a burst, and Android's record of it is written by then. */
+    const val WIDGET_REFRESH_DELAY_MS = 2_000L
+
     // ---- persistence: JSON blobs in SharedPreferences ----
     //
     //   rules:      {"com.instagram.android": {"allow": 5, "window": 120}, ...}

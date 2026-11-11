@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The screen-time widget, as the launcher needs it described: four
+     cells by two to start with (the cell counts from Android 12, the dp
+     sizes before it), resizable down to two by one and as large as the
+     user likes. The app shows it afresh itself as the screen changes
+     (ScreenTimeWidget.screenChanged); updatePeriodMillis is Android's own
+     reminder, every half hour (its shortest), for when the blocker is off. -->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_description"
+    android:initialLayout="@layout/widget_screen_time"
+    android:minHeight="110dp"
+    android:minResizeHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minWidth="250dp"
+    android:previewLayout="@layout/widget_screen_time_preview"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="2"
+    android:targetCellWidth="4"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen" />

@@ -68,6 +68,7 @@ class UsageActivity : Activity() {
                 for (c in chips.values) addView(c)
             }, Ui.lp().apply { topMargin = Ui.dp(context, 12) })
             addView(list, Ui.lp().apply { topMargin = Ui.dp(context, 8) })
+            widgetLink()?.let { addView(it, Ui.lp(Ui.WRAP).apply { topMargin = Ui.dp(context, 20) }) }
         }
         scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
@@ -177,6 +178,23 @@ class UsageActivity : Activity() {
         addView(android.view.View(context).apply { background = Ui.shape(context, R.color.accent, 99f) },
             LinearLayout.LayoutParams(0, Ui.MATCH, f))
         addView(android.view.View(context), LinearLayout.LayoutParams(0, Ui.MATCH, 1f - f))
+    }
+
+    /**
+     * At the foot of the page: today's screen time as a widget on the home
+     * screen. The launcher takes it from here (its own "Add to home screen"
+     * sheet); one that can't is offered nothing, and the widget is still in
+     * its widget list.
+     */
+    private fun widgetLink(): View? {
+        val widgets = getSystemService(android.appwidget.AppWidgetManager::class.java) ?: return null
+        val supported = try { widgets.isRequestPinAppWidgetSupported } catch (e: Exception) { false }
+        if (!supported) return null
+        return Ui.quietLink(this, "Add the widget to your home screen") {
+            try {
+                widgets.requestPinAppWidget(android.content.ComponentName(this, ScreenTimeWidget::class.java), null, null)
+            } catch (e: Exception) {}
+        }
     }
 
     /** The search box, as in the app picker. */

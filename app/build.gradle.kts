@@ -99,11 +99,13 @@ dependencies {
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
 }
 
-// ShortcutsTest reads these files straight from disk; declare them so an edit
-// to them re-runs the tests instead of leaving the task UP-TO-DATE.
+// ShortcutsTest and WidgetTest read these files straight from disk; declare
+// them so an edit to them re-runs the tests instead of leaving the task
+// UP-TO-DATE.
 tasks.withType<Test>().configureEach {
     inputs.file("src/main/AndroidManifest.xml")
     inputs.dir("src/main/res/xml")
+    inputs.dir("src/main/res/layout")
     inputs.dir(rootProject.file("rules"))
 }
 

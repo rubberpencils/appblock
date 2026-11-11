@@ -7,4 +7,15 @@
     <string name="strict_admin_description">Strict mode. While it\'s on, Android won\'t let Moly be uninstalled. It asks for no other admin powers, and lets go when strict mode ends.</string>
     <!-- Shown under Moly on the system's Accessibility settings page -->
     <string name="blocker_service_description">Moly uses this to see which apps are on screen (split screen and pop-up windows included) and to put its block wall over an app whose time is up. It only looks at which app each window belongs to, never at what\'s inside it, except to spot YouTube\'s Shorts player or Instagram\'s Reels player if you block them, and in strict mode to find its own name on Settings\' screens and cover the ones that would switch it off. Nothing about you leaves your phone.</string>
+    <!-- The home-screen widget (ScreenTimeWidget). Its name and description are what the launcher's widget list shows under Moly. -->
+    <string name="widget_label">Screen time</string>
+    <string name="widget_description">Today\'s screen time, and how much of it went to the apps you limit.</string>
+    <string name="widget_eyebrow">SCREEN TIME</string>
+    <string name="widget_today">Today</string>
+    <string name="widget_ask">Allow usage access in Moly to see your screen time here.</string>
+    <!-- The same, on a widget one row high -->
+    <string name="widget_ask_short">Allow usage access in Moly</string>
+    <!-- The made-up day in the widget's picture in the launcher's widget list -->
+    <string name="widget_preview_total">2 hours 5 minutes</string>
+    <string name="widget_preview_limited">Limited apps: 40 minutes</string>
 </resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A made-up day for the widget's picture in the launcher's widget list:
+     the other apps' line and the limited apps', as the real chart draws them. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="240dp" android:height="64dp"
+    android:viewportWidth="240" android:viewportHeight="64">
+    <path android:pathData="M0,63.5 H240" android:strokeColor="@color/line" android:strokeWidth="1" />
+    <path android:pathData="M0,63 C28,63 34,61 52,50 C64,42 70,54 84,46 C100,36 104,20 120,26 C136,32 140,48 156,40 C172,32 176,12 196,18 C214,24 222,44 240,40 V63 Z"
+        android:fillColor="@color/chart_other" android:fillAlpha="0.3" />
+    <path android:pathData="M0,63 C28,63 34,61 52,50 C64,42 70,54 84,46 C100,36 104,20 120,26 C136,32 140,48 156,40 C172,32 176,12 196,18 C214,24 222,44 240,40"
+        android:strokeColor="@color/chart_other_line" android:strokeWidth="2" android:strokeLineCap="round" />
+    <path android:pathData="M0,63 C40,63 60,63 96,60 C112,58 114,40 128,44 C142,48 146,62 164,58 C180,54 186,34 204,38 C220,42 226,56 240,54 V63 Z"
+        android:fillColor="@color/accent" android:fillAlpha="0.22" />
+    <path android:pathData="M0,63 C40,63 60,63 96,60 C112,58 114,40 128,44 C142,48 146,62 164,58 C180,54 186,34 204,38 C220,42 226,56 240,54"
+        android:strokeColor="@color/accent" android:strokeWidth="2" android:strokeLineCap="round" />
+</vector>

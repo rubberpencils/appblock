@@ -196,6 +196,22 @@
             </intent-filter>
         </receiver>
 
+        <!-- The home-screen widget: today's screen time. Exported because
+             Android's widget service is what tells it to show itself (when
+             it's placed, resized, and every half hour); another app sending
+             the same only makes it show itself again. -->
+        <receiver
+            android:name=".ScreenTimeWidget"
+            android:exported="true"
+            android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/screen_time_widget" />
+        </receiver>
+
         <!-- The blocker: an accessibility service that sees which apps are on
              screen and draws the block wall over a spent one. Only the
              system may bind to it (the permission); the user switches it on
