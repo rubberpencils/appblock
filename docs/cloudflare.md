@@ -36,8 +36,8 @@ Setting them back to "Namecheap BasicDNS" takes the domain off Cloudflare.
 Don't add a record for `trymoly.com` itself by hand: the deploy owns that
 name, and in CI it replaces whatever record is there.
 
-**Email** (Email → Email Routing): on, with the catch-all rule forwarding
-every `@trymoly.com` address to the maintainer's inbox. Receiving only.
+**Email** (Email → Email Routing): on, forwarding `support@trymoly.com` to
+the maintainer's inbox. Receiving only.
 
 **`www` redirect** (Rules → Redirect Rules): "Redirect from WWW to root",
 `https://www.*` → `https://${1}`, 301, query string preserved.
@@ -45,13 +45,21 @@ every `@trymoly.com` address to the maintainer's inbox. Receiving only.
 **HTTPS** (SSL/TLS → Edge Certificates): Always Use HTTPS on. Without it,
 plain `http://www.trymoly.com` misses the redirect rule and hangs.
 
+**Web Analytics** (Observability → Analytics → Web analytics): on for
+`trymoly.com`. Cloudflare adds its own script to pages opened in a browser
+and counts visits and load times, without cookies. It sees nothing of the
+app's requests or the API; those are in the Worker's logs (Workers & Pages →
+`moly` → Observability).
+
 **Leave off** (Security): Bot Fight Mode and Under Attack Mode. Both
 challenge visitors that aren't browsers, and the app's rules download isn't
 one: phones would get a "prove you're human" page instead of the rules.
 
 ## CI's access
 
-The `Publish site` workflow deploys with two repository secrets:
+The `Publish site` workflow deploys with two secrets. They are kept in the
+`production` environment (repo Settings → Environments), not as repository
+secrets, so only the deploy job can read them:
 
 - `CLOUDFLARE_API_TOKEN`: the token named "GitHub Actions: deploy
   trymoly.com" (profile → API Tokens). It can do only what a deploy needs:
@@ -65,13 +73,15 @@ The `Publish site` workflow deploys with two repository secrets:
   into DNS is the record a deploy makes for the Worker's own domain. It
   belongs to the maintainer's login: if that login leaves the account, make
   a new one with the same permissions. If it leaks, roll it in the
-  dashboard and set the secret again (`gh secret set CLOUDFLARE_API_TOKEN`).
+  dashboard and set the secret again
+  (`gh secret set CLOUDFLARE_API_TOKEN --env production`).
 - `CLOUDFLARE_ACCOUNT_ID`: on the domain's Overview page. Not a secret, but
   the deploy needs it.
 
-The deploy job runs in the `production` environment (repo Settings →
-Environments), which only allows `main`, and the job itself refuses any
-other branch: "Run workflow" on a feature branch publishes nothing.
+The `production` environment only allows `main`, so a workflow on any other
+branch can't get the secrets, whatever it says. The deploy job itself also
+refuses any other branch: "Run workflow" on a feature branch publishes
+nothing.
 
 ## The old address
 
@@ -111,9 +121,10 @@ deploy from a laptop: deploys go through CI, which runs the checks first.
 
 1. Add `trymoly.com` to a Cloudflare account (free plan), delete every DNS
    record the import finds, and set the nameservers it gives at Namecheap.
-2. Once the domain is active: Email Routing, the `www` redirect (accept its
-   offer to create the `www` record) and Always Use HTTPS, as above.
-3. Create the API token (the permissions above), set both secrets, and
-   create the `production` environment, limited to `main`.
+2. Once the domain is active: Email Routing, Web Analytics, the `www`
+   redirect (accept its offer to create the `www` record) and Always Use
+   HTTPS, as above.
+3. Create the API token (the permissions above), create the `production`
+   environment, limited to `main`, and set both secrets in it.
 4. Run the `Publish site` workflow. The first deploy creates the Worker, the
    DNS record for `trymoly.com` and its certificate.
