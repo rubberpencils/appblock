@@ -1430,7 +1430,9 @@ object Storage {
      * before, 1: the one after): the same weekday a week away, the same date
      * a month or a year away, but never past today nor before the history
      * starts. Null when there's nothing that way: the period after hasn't
-     * begun, or the one before has no history.
+     * begun, or the one before has no history. A `day` outside the history
+     * (the clock was set back under a screen left open) can still step
+     * towards it.
      */
     fun periodStep(
         period: Period, day: java.time.LocalDate, by: Long, firstDay: java.time.LocalDate?,
@@ -1444,7 +1446,7 @@ object Storage {
         }
         val (first, last) = periodDays(period, to, firstDow)
         val start = minOf(firstDay ?: today, today)
-        if (first.isAfter(today) || last.isBefore(start)) return null
+        if (by > 0 && first.isAfter(today) || by < 0 && last.isBefore(start)) return null
         return maxOf(start, minOf(to, today))
     }
 
@@ -1522,14 +1524,16 @@ object Storage {
      * screen. A year's bars are a day's average in that month, over the
      * month's days the history has, so a short month, the month the history
      * began in and the one going on now all compare. `known` bars have
-     * begun; the rest are still to come. `totalMs` and `limitedMs`: the
+     * begun; the rest are still to come. The bars before `since` are from
+     * before the history began: nothing is known of them, which isn't the
+     * same as no screen time. `totalMs` and `limitedMs`: the
      * whole period's. `avgMs`: a day's average over `days`, the period's
      * days from the history's first to today (today, so far, counts as
      * one). `busiest`: the tallest bar, the earliest on a tie; null with no
      * screen time at all.
      */
     class PeriodStats(
-        val starts: List<java.time.LocalDate>, val limited: LongArray, val other: LongArray, val known: Int,
+        val starts: List<java.time.LocalDate>, val limited: LongArray, val other: LongArray, val since: Int, val known: Int,
         val totalMs: Long, val limitedMs: Long, val days: Int, val avgMs: Long, val busiest: Int?,
     )
 
@@ -1567,7 +1571,9 @@ object Storage {
             oth = LongArray(n) { per.all[it] - per.limited[it] }
         }
         val busiest = starts.indices.filter { lim[it] + oth[it] > 0 }.maxWithOrNull(compareBy({ lim[it] + oth[it] }, { -it }))
-        return PeriodStats(starts, lim, oth, starts.count { !it.isAfter(today) },
+        // The bar the history's first day is in: the last one that starts on or before it.
+        val since = (starts.indexOfLast { !it.isAfter(start) }).coerceAtLeast(0)
+        return PeriodStats(starts, lim, oth, since, starts.count { !it.isAfter(today) },
             total, per.limited.sum(), days, total / days, busiest)
     }
 

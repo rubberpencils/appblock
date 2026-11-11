@@ -438,6 +438,39 @@ class UsageE2eTest {
     }
 
     @Test
+    fun arrows_stepAWeekAtATime_asFarAsTheHistoryGoes() {
+        seed()
+        val firstDow = WeekFields.of(Locale.getDefault()).firstDayOfWeek
+        val week = Storage.Period.WEEK
+        val yesterday = today.minusDays(1)
+        // Phone for 25 minutes a week before yesterday: the week before yesterday's has a history, the one before that none.
+        val weekBefore = yesterday.minusDays(7)
+        History.insertForTests(ctx, listOf(used(PHONE, weekBefore, 10, 0, 25)))
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        waitFor(text("Week")).click()
+        val from = Storage.periodTitle(week, yesterday, today, firstDow)
+        E2e.waitForFresh(text(from))
+
+        // Back a week: that week's name, and what was used in it.
+        assertTrue(E2e.eventually { device.findObject(By.desc("Previous week")).isEnabled })
+        waitFor(By.desc("Previous week")).click()
+        val to = Storage.periodTitle(week, weekBefore, today, firstDow)
+        E2e.waitForFresh(text(to))
+        // (The day before yesterday's five minutes are in it too, when yesterday began its week.)
+        val alsoIn = Storage.periodDays(week, yesterday.minusDays(1), firstDow) == Storage.periodDays(week, weekBefore, firstDow)
+        E2e.waitForFresh(By.descStartsWith("Screen time, $to: ${if (alsoIn) 30 else 25} minutes."))
+        // The history starts in it: no further back.
+        assertTrue(E2e.eventually { !device.findObject(By.desc("Previous week")).isEnabled })
+
+        // And forward again, to the week it came from.
+        waitFor(By.desc("Next week")).click()
+        E2e.waitForFresh(text(from))
+        E2e.waitForFresh(text("Busiest day: Yesterday, 55 minutes"))
+    }
+
+    @Test
     fun aMonth_carriesToTheUsagePage_andToAnAppsOwn() {
         seed()
         openHome()

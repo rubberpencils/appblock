@@ -87,6 +87,14 @@ class PeriodTest {
         assertEquals(LocalDate.of(2025, 12, 30), step(Period.YEAR, today, -1, firstDay = LocalDate.of(2025, 12, 30)))
         assertEquals(LocalDate.of(2025, 11, 12), step(Period.YEAR, today, -1, firstDay = LocalDate.of(2024, 5, 1)))
         assertNull(step(Period.YEAR, today, 1))
+
+        // A day outside the history (the clock set back under a screen left open) isn't stuck there.
+        assertEquals(today, step(Period.DAY, nov(14), -1))
+        assertNull(step(Period.DAY, nov(14), 1))
+        assertEquals(first, step(Period.DAY, oct(17), 1))
+        assertNull(step(Period.DAY, oct(17), -1))
+        assertEquals(today, step(Period.WEEK, nov(30), -1))
+        assertEquals(first, step(Period.MONTH, LocalDate.of(2026, 8, 5), 1))
     }
 
     @Test
@@ -162,6 +170,7 @@ class PeriodTest {
         assertArrayEquals(mins(0, 40, 0, 10, 0, 0, 0), s.limited)
         assertArrayEquals(mins(0, 15, 5, 0, 0, 0, 0), s.other)
         assertEquals("Friday to Sunday are still to come", 4, s.known)
+        assertEquals("Monday was before the history began", 1, s.since)
         assertEquals(70.min, s.totalMs)
         assertEquals(50.min, s.limitedMs)
         assertEquals("Tuesday, Wednesday and today", 3, s.days)
@@ -172,6 +181,7 @@ class PeriodTest {
         val past = Storage.periodStats(listOf(used(ig, nov(3), 9, 0, 30), used(yt, nov(5), 9, 0, 30)),
             Period.WEEK, nov(2), nov(8), zone, setOf(yt), oct(20), today)
         assertEquals(7, past.known)
+        assertEquals(0, past.since)
         assertEquals(7, past.days)
         assertEquals(60.min / 7, past.avgMs)
         assertEquals(1, past.busiest)
@@ -182,6 +192,7 @@ class PeriodTest {
         assertEquals(0L, none.avgMs)
         assertEquals(1, none.days)
         assertNull(none.busiest)
+        assertEquals("no history: today's bar alone is known, with nothing in it", 3 to 4, none.since to none.known)
     }
 
     @Test
@@ -208,6 +219,7 @@ class PeriodTest {
             zone, setOf(yt), oct(22), today)
         assertEquals((1..12).map { LocalDate.of(2026, it, 1) }, s.starts)
         assertEquals("December is still to come", 11, s.known)
+        assertEquals("January to September were before the history began", 9, s.since)
         assertEquals(10.min, s.limited[9])
         assertEquals(10.min, s.other[9])
         assertEquals(10.min, s.limited[10])
