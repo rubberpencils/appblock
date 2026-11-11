@@ -112,7 +112,7 @@ class StrictActivity : Activity() {
     private fun choosePage() = column().apply {
         addView(Ui.eyebrow(context, "Strict mode"), Ui.lp().apply { topMargin = Ui.dp(context, 20) })
         addView(Ui.display(context, "Choose your way out.", 34f), Ui.lp().apply { topMargin = Ui.dp(context, 8) })
-        addView(Ui.body(context, "Strict mode locks AppBlock in: no uninstalling, no force stopping, no " +
+        addView(Ui.body(context, "Strict mode locks Moly in: no uninstalling, no force stopping, no " +
             "switching off its permissions, and limits only get stricter. The way out you pick is the only one.", 15f)
             .apply { setTextColor(getColor(R.color.muted)) }, Ui.lp().apply { topMargin = Ui.dp(context, 10) })
         addView(wayCard(R.drawable.ic_bolt, R.color.accent_soft, R.color.accent, "Plug in to unlock",
@@ -352,7 +352,7 @@ class StrictActivity : Activity() {
         setChip(chip, "Strict mode off", R.color.accent_soft, R.color.accent)
         addView(centered(ring, 168, chip,
             Ui.display(context, "Strict mode is off.", 32f).apply { gravity = Gravity.CENTER },
-            Ui.muted(context, "AppBlock can be uninstalled and its limits changed again.", 16f).apply { gravity = Gravity.CENTER }),
+            Ui.muted(context, "Moly can be uninstalled and its limits changed again.", 16f).apply { gravity = Gravity.CENTER }),
             LinearLayout.LayoutParams(Ui.MATCH, 0, 1f))
         addView(Ui.primaryButton(context, "Back to home") { finish() }, Ui.lp())
     }

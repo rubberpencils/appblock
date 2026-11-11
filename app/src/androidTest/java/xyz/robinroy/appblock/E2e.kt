@@ -25,7 +25,7 @@ import java.util.regex.Pattern
  * of the usage log so a test can start "5 minutes into" a budget instead of
  * waiting it out.
  *
- * The tests run inside AppBlock's own process, so they read and write its
+ * The tests run inside Moly's own process, so they read and write its
  * storage directly; everything on screen goes through UI Automator, which
  * also sees other apps and the block wall drawn over them.
  */
@@ -125,7 +125,7 @@ object E2e {
 
     /**
      * Strict mode on with this way out, as if chosen on its setup screen and
-     * then AppBlock made a device admin (through adb here; the system's
+     * then Moly made a device admin (through adb here; the system's
      * Activate page is driven in StrictE2eTest.turningOn_goesThroughTheDeviceAdminPage).
      */
     fun strictOn(way: Storage.WayOut, cooldownMin: Int = 15, pass: Rule? = null) {
@@ -140,7 +140,7 @@ object E2e {
         Storage.addUsage(ctx, pkg, now - startAgo, now - endAgo, windowMin)
     }
 
-    /** AppBlock's home screen, freshly built from storage. */
+    /** Moly's home screen, freshly built from storage. */
     fun openHome() {
         ctx.startActivity(Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))

@@ -35,7 +35,7 @@ import org.junit.runner.RunWith
 /**
  * Strict mode, end to end: turned on through the system's device admin
  * page, the wall over the system pages that could switch the blocker off
- * or uninstall AppBlock (and not over the rest of Settings), limits that
+ * or uninstall Moly (and not over the rest of Settings), limits that
  * only get stricter, and every way out: the cooldown, plugging in, the
  * emergency pass that opens the blocked apps without ending it, adb, and
  * the admin found switched off (safe mode, and back from it).
@@ -47,7 +47,7 @@ class StrictE2eTest {
     @get:Rule(order = 0)
     val leave = E2e.Cleanup {
         // Strict mode must never outlive a test: the next one, and Gradle's
-        // uninstall after the run, would find AppBlock locked in.
+        // uninstall after the run, would find Moly locked in.
         Strict.resetForTests(ctx)
         shell("dumpsys battery reset")
         device.findObject(text("Go to home screen"))?.click()
@@ -83,7 +83,7 @@ class StrictE2eTest {
         waitFor(text("One more step"))
         waitFor(text("Open settings")).click()
 
-        // Android's own page: AppBlock asks for no admin powers.
+        // Android's own page: Moly asks for no admin powers.
         waitFor(text("Activate this device admin app")).click()
 
         waitFor(By.desc("Strict mode is on"))
@@ -112,11 +112,11 @@ class StrictE2eTest {
     }
 
     @Test
-    fun systemPagesNamingAppBlock_areWalled_theRestOfSettingsIsNot() {
+    fun systemPagesNamingMoly_areWalled_theRestOfSettingsIsNot() {
         freshState()
         strictOn(Storage.WayOut.COOLDOWN)
 
-        // AppBlock's App info: force stop, clear storage, uninstall.
+        // Moly's App info: force stop, clear storage, uninstall.
         openPage(appInfo)
         assertTrue("App info isn't walled", strictWallOver(handler(appInfo)))
         device.pressHome()
@@ -135,7 +135,7 @@ class StrictE2eTest {
         waitFor(text("Go back")).click()
         device.pressHome()
 
-        // Wi-Fi never names AppBlock: Settings stays usable for it.
+        // Wi-Fi never names Moly: Settings stays usable for it.
         openPage(Intent(android.provider.Settings.ACTION_WIFI_SETTINGS))
         assertTrue(appears(By.pkg(settings)))
         Thread.sleep(1500)   // longer than the wall ever takes (it went up in ~150 ms above)
@@ -170,11 +170,11 @@ class StrictE2eTest {
     }
 
     @Test
-    fun androidRefusesToUninstallAppBlock() {
+    fun androidRefusesToUninstallMoly() {
         freshState()
         strictOn(Storage.WayOut.COOLDOWN)
         // What makes Android refuse: an active admin in the package. (Not
-        // tried for real: these tests run inside AppBlock.)
+        // tried for real: these tests run inside Moly.)
         val dpm = ctx.getSystemService(android.app.admin.DevicePolicyManager::class.java)
         assertTrue(dpm.isAdminActive(Strict.admin(ctx)))
     }
@@ -309,7 +309,7 @@ class StrictE2eTest {
         openApp(CLOCK)
         waitFor(textContains("Clock is blocked"))
 
-        // Straight to AppBlock: after Home is pressed (the wall's button),
+        // Straight to Moly: after Home is pressed (the wall's button),
         // Android refuses other apps' launches for a few seconds.
         openHome()
         waitFor(By.desc("Strict mode is on")).click()
@@ -407,7 +407,7 @@ class StrictE2eTest {
         freshState()
         strictOn(Storage.WayOut.COOLDOWN)
         val wasOn = Storage.loadStrict(ctx)
-        // Safe mode: AppBlock doesn't run while the admin is switched off,
+        // Safe mode: Moly doesn't run while the admin is switched off,
         // so it's never told. Here it's running, and told (the test above):
         // with the blocker off, as on a phone that's not booted yet, the
         // admin goes, and strict mode is put back as safe mode leaves it,
@@ -432,6 +432,6 @@ class StrictE2eTest {
         freshState()
         ctx.startActivity(Intent(ctx, SupportActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         waitFor(text("Contact support"))
-        waitFor(text("support@robinroy.xyz"))
+        waitFor(text("support@trymoly.com"))
     }
 }

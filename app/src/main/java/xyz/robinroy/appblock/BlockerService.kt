@@ -83,7 +83,7 @@ class BlockerService : AccessibilityService() {
     // the permission controller), found when the service starts.
     private var guarded = emptySet<String>()
     // While strict mode is on: the guarded apps, whose windows are read for
-    // AppBlock's name the moment they change.
+    // Moly's name the moment they change.
     private var strictWatch = emptySet<String>()
     // Guarded apps walled by strict mode, while they're on screen (Storage.strictWalls).
     private var strictWalled = emptySet<String>()
@@ -146,7 +146,7 @@ class BlockerService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             // In a watched feed's app (Shorts opening, or scrolled away from).
             // A playing video changes the screen many times a second: look
-            // again at most every 300 ms. A guarded app (AppBlock's name
+            // again at most every 300 ms. A guarded app (Moly's name
             // scrolled into view) is looked at sooner.
             if (pkg in contentWatched && !refreshQueued) {
                 refreshQueued = true
@@ -246,11 +246,11 @@ class BlockerService : AccessibilityService() {
         // The pass counts only while it's holding a wall back: a spent app
         // or a blocked feed on screen.
         if (pass) strict = Strict.meterPass(this, strict, plan.walled.isNotEmpty() || feedsShowing.isNotEmpty())
-        // Strict mode: the guarded apps on screen showing AppBlock's name
+        // Strict mode: the guarded apps on screen showing Moly's name
         // (its App info, its Accessibility switch, the uninstall dialog...).
         strictWatch = if (strict.on) guarded else emptySet()
         val guardedOnScreen = strictWatch.filter { it in onScreen }.toSet()
-        val naming = guardedOnScreen.filter(::namesAppBlock).toSet()
+        val naming = guardedOnScreen.filter(::namesMoly).toSet()
         val walledBefore = strictWalled
         strictWalled = if (strict.on) Storage.strictWalls(strictWalled, onScreen.keys, naming) else emptySet()
         if (strictWalled != walledBefore) Log.i(TAG, "strict mode walls: $strictWalled")
@@ -295,12 +295,12 @@ class BlockerService : AccessibilityService() {
     }
 
     /**
-     * Whether any of `pkg`'s windows names AppBlock (Storage.namesApp): its
+     * Whether any of `pkg`'s windows names Moly (Storage.namesApp): its
      * texts and content descriptions, read off the window's contents. Only
      * the guarded system apps are read, only while strict mode is on, and
      * only for this one word; nothing is kept.
      */
-    private fun namesAppBlock(pkg: String): Boolean {
+    private fun namesMoly(pkg: String): Boolean {
         val label = applicationInfo.loadLabel(packageManager).toString()
         return appRoots[pkg].orEmpty().any { root ->
             val texts = mutableListOf<String>()
@@ -353,7 +353,7 @@ class BlockerService : AccessibilityService() {
     /**
      * Watch the content of `apps` while one is on screen: a feed opens
      * inside its app (a tab, a link) without any window changing, and in
-     * strict mode a guarded app's list scrolls AppBlock into view. Content
+     * strict mode a guarded app's list scrolls Moly into view. Content
      * changes are the busiest events there are, so they're only asked for
      * while such an app is on screen.
      */
@@ -421,7 +421,7 @@ class BlockerService : AccessibilityService() {
      * chronometer itself, so each is only (re)posted when something actually
      * changes: at session start, whenever old usage ages out of the rolling
      * window and gives time back, and when usage crosses 50%/90% (the
-     * warning then replaces the text). Tapping one opens AppBlock.
+     * warning then replaces the text). Tapping one opens Moly.
      */
     private fun showTimers(apps: Set<String>, rules: Map<String, Rule>) {
         val nm = getSystemService(NotificationManager::class.java)

@@ -466,39 +466,39 @@ class StrictTest {
     // ---- the Settings wall ----
 
     // Texts read off the real pages on the Android 14 emulator.
-    private val appInfo = listOf("AppBlock", "Open", "Uninstall", "Force stop", "Notifications")
-    private val accessibility = listOf("Use AppBlock", "Options", "AppBlock shortcut", "Off")
-    private val stopDialog = listOf("Stop AppBlock?", "Tapping Stop will stop AppBlock.", "Cancel", "Stop")
+    private val appInfo = listOf("Moly", "Open", "Uninstall", "Force stop", "Notifications")
+    private val accessibility = listOf("Use Moly", "Options", "Moly shortcut", "Off")
+    private val stopDialog = listOf("Stop Moly?", "Tapping Stop will stop Moly.", "Cancel", "Stop")
     private val forceStopDialog = listOf("Force stop?", "If you force stop an app, it may misbehave.", "Cancel", "OK")
     private val clearStorageDialog = listOf("Delete app data?",
         "This app’s data, including files and settings, will be permanently deleted from this device", "Cancel", "Delete")
-    private val safetyCard = listOf("Review app with full device access", "AppBlock", "Remove access")
+    private val safetyCard = listOf("Review app with full device access", "Moly", "Remove access")
     private val wifi = listOf("Internet", "AndroidWifi", "Connected", "Network preferences")
 
     @Test
-    fun `screens that name AppBlock`() {
+    fun `screens that name Moly`() {
         for (page in listOf(appInfo, accessibility, stopDialog, safetyCard))
-            assertTrue(page.toString(), Storage.namesApp(page, "AppBlock"))
-        assertTrue(Storage.namesApp(listOf("appblock"), "AppBlock"))
+            assertTrue(page.toString(), Storage.namesApp(page, "Moly"))
+        assertTrue(Storage.namesApp(listOf("moly"), "Moly"))
     }
 
     @Test
     fun `screens that don't`() {
         for (page in listOf(forceStopDialog, clearStorageDialog, wifi, emptyList()))
-            assertFalse(page.toString(), Storage.namesApp(page, "AppBlock"))
+            assertFalse(page.toString(), Storage.namesApp(page, "Moly"))
     }
 
     private val settings = "com.android.settings"
     private val installer = "com.google.android.packageinstaller"
 
     @Test
-    fun `a screen naming AppBlock is walled`() {
+    fun `a screen naming Moly is walled`() {
         assertEquals(setOf(settings), Storage.strictWalls(emptySet(), setOf(settings), setOf(settings)))
     }
 
     @Test
     fun `the wall stays while the app is on screen, whatever it shows`() {
-        // App info, then its Force stop dialog (which doesn't name AppBlock).
+        // App info, then its Force stop dialog (which doesn't name Moly).
         assertEquals(setOf(settings), Storage.strictWalls(setOf(settings), setOf(settings), emptySet()))
     }
 

@@ -2,7 +2,7 @@
 
 **Please open issues, not pull requests.**
 
-I'm not accepting pull requests because of the flood of AI slop. AppBlock can see
+I'm not accepting pull requests because of the flood of AI slop. Moly can see
 which apps you use and draw over them, on my phone and yours, so every line of it
 needs to be code I can stand behind.
 

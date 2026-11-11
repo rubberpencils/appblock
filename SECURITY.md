@@ -10,7 +10,7 @@ it, except YouTube's Shorts player or Instagram's Reels player, found by view id
 when the user blocks them) and
 may hold the optional **Usage access** (how long apps are used, for the screen-time
 numbers). Its one use of the network is downloading the Shorts and Reels detection rules
-(`rules/v1/rules.signed.json` from this repo, served at `appblock.robinroy.xyz` over HTTPS): a plain GET that sends nothing
+(`rules/v1/rules.signed.json` from this repo, served at `trymoly.com` over HTTPS): a plain GET that sends nothing
 about the device or user. The app only uses a rules file signed with the maintainer's
 key (ECDSA P-256; the public half is `Storage.RULES_PUBLIC_KEY`), and a rule can only
 name view ids to look for in an app whose feed the user blocked. All data (your rules and usage log) lives in local app

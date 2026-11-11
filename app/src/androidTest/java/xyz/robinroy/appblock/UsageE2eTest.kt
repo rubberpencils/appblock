@@ -154,12 +154,12 @@ class UsageE2eTest {
         waitFor(text("Apps"))
         waitFor(By.descStartsWith("Clock, "))
         assertTrue(History.allForTests(ctx).any { it.pkg == CLOCK && it.end > since })
-        // AppBlock is on screen now: shown, though not stored until it leaves. (Far down the
+        // Moly is on screen now: shown, though not stored until it leaves. (Far down the
         // list on an emulator with a day of real use behind it.)
-        E2e.scrollTo(By.descStartsWith("AppBlock, "))
+        E2e.scrollTo(By.descStartsWith("Moly, "))
         assertTrue(History.allForTests(ctx).none { it.pkg == ctx.packageName && it.end > since })
 
-        // An app's own page has its sessions alone: not AppBlock's, on screen now.
+        // An app's own page has its sessions alone: not Moly's, on screen now.
         val done = java.util.concurrent.CountDownLatch(1)
         var clockToday: History.Span? = null
         History.loadApp(ctx, CLOCK, today, today, zone) { clockToday = it; done.countDown() }

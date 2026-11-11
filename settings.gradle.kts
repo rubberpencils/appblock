@@ -11,7 +11,7 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "appblock"
+rootProject.name = "moly"
 include(":app")
 include(":fixture")   // a stand-in for YouTube in the e2e tests
 

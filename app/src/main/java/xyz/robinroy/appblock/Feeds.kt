@@ -10,8 +10,8 @@ import kotlin.concurrent.thread
 /**
  * The rules for spotting Shorts and Reels on the phone: the newest of the
  * copy bundled in the APK and the last one fetched. Fetching is a plain download of the
- * signed rules file from appblock.robinroy.xyz (GitHub Pages, deployed from
- * this repo's rules/; the host can move behind that name). A file whose
+ * signed rules file from trymoly.com (this repo's server/, which serves
+ * rules/; the host can move behind that name). A file whose
  * signature doesn't check out is thrown away. Nothing about the phone or
  * its user is sent.
  */
@@ -76,7 +76,7 @@ object Feeds {
         conn.useCaches = false
         // The default ("Dalvik/2.1.0 (Linux; U; Android 14; CPH2401 ...)")
         // names the phone's model and Android version.
-        conn.setRequestProperty("User-Agent", "AppBlock")
+        conn.setRequestProperty("User-Agent", "Moly")
         prefs(ctx).getString("etag", null)?.let { conn.setRequestProperty("If-None-Match", it) }
         try {
             when (conn.responseCode) {

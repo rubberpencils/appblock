@@ -351,7 +351,7 @@ class AppPickerActivity : Activity() {
                     .header("Sorting needs Usage access")
                     .message("These sorts rank apps by screen time, " +
                         "which Android only shares after you grant " +
-                        "AppBlock the Usage access permission.")
+                        "Moly the Usage access permission.")
                 sheet.actions(
                     sheet.secondary("Not now") { sheet.dismiss() },
                     sheet.primary("Open settings") {

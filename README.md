@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/icon.png" alt="AppBlock's icon" width="96">
+  <img src="public/icon.png" alt="Moly's icon" width="96">
 </p>
 
-<h1 align="center">AppBlock</h1>
+<h1 align="center">Moly</h1>
 
 <p align="center">
   A few minutes per app, every few hours. Not a daily quota that's gone an hour after you wake up.
@@ -42,7 +42,7 @@
     <td width="25%">
       <img src="public/strict-setup.jpg" alt="Strict mode: plug in to unlock, or a cooldown">
       <h3 align="center">Strict mode</h3>
-      <p align="center">Lock AppBlock in. Pick your way out: plug in, or a cooldown.</p>
+      <p align="center">Lock Moly in. Pick your way out: plug in, or a cooldown.</p>
     </td>
     <td width="25%">
       <img src="public/strict.jpg" alt="Strict mode's cooldown">
@@ -50,7 +50,7 @@
       <p align="center">Want out? Tap Stop and wait out the cooldown first.</p>
     </td>
     <td width="25%">
-      <img src="public/strict-wall.jpg" alt="AppBlock's App info, walled in strict mode">
+      <img src="public/strict-wall.jpg" alt="Moly's App info, walled in strict mode">
       <h3 align="center">No back door</h3>
       <p align="center">No uninstalling, no force stop, no switching it off.</p>
     </td>
@@ -84,7 +84,7 @@
 <p align="center">
   That's when it clicked: daily limits fail because one binge empties them, and then you override.
   <br>
-  AppBlock gives you a small allowance every time window instead.
+  Moly gives you a small allowance every time window instead.
 </p>
 
 <p align="center">

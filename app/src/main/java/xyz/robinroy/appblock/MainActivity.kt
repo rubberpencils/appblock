@@ -150,7 +150,7 @@ class MainActivity : Activity() {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         addView(logoMark(22))
-        addView(Ui.display(context, "AppBlock", 19f).apply {
+        addView(Ui.display(context, "Moly", 19f).apply {
             typeface = Ui.serif(context, italic = true)
             setPadding(Ui.dp(context, 10), 0, 0, 0)
         }, Ui.lp(0).apply { weight = 1f })
@@ -362,11 +362,11 @@ class MainActivity : Activity() {
     }
     private fun notifReminder() = ReminderCard.make(
         this,
-        message = "Notifications are off, so AppBlock can't warn you " +
+        message = "Notifications are off, so Moly can't warn you " +
             "when you're close to using up an app's allowance. " +
             "Tap to turn them on.",
         confirmTitle = "Skip usage warnings?",
-        confirmBody = "Without notifications, AppBlock can't let you know " +
+        confirmBody = "Without notifications, Moly can't let you know " +
             "when you're about to use up an app's allowance. The first " +
             "you'll hear of it is the block wall.\n\nHide this reminder " +
             "anyway? (You can still enable notifications later from the " +
@@ -465,22 +465,22 @@ class MainActivity : Activity() {
 
     /**
      * What blocking a feed means and what it looks at, before it's on. Play
-     * requires this: it's the one time AppBlock looks inside another app,
+     * requires this: it's the one time Moly looks inside another app,
      * and the one time it uses the network.
      */
     private fun feedDisclosure(pkg: String, feed: Storage.Feed) {
         val app = labelFor(pkg)
         val name = feed.name
         Sheet.confirm(this, "${feed.label}?",
-            "AppBlock will put a wall over $app whenever $name is on screen, even " +
+            "Moly will put a wall over $app whenever $name is on screen, even " +
                 "with time left, and take it down as soon as you go back. However " +
                 "it opens (a tab, a link, a message), the wall goes up; thumbnails " +
                 "stay.\n\n" +
                 "To spot $name, it looks inside $app for the $name player, by its " +
                 "name in $app's code. It reads no text and nothing about the " +
                 "videos, and nothing leaves your phone.\n\n" +
-                "$app changes often, so while $app is open AppBlock checks every " +
-                "few hours for updated rules at appblock.robinroy.xyz. That " +
+                "$app changes often, so while $app is open Moly checks every " +
+                "few hours for updated rules at trymoly.com. That " +
                 "download sends nothing about you.",
             yes = "Block $name", no = "Not now") {
             Storage.setFeedBlocked(this, pkg, true)
@@ -570,8 +570,8 @@ class MainActivity : Activity() {
         val links = Ui.muted(this, "", 13f).apply {
             gravity = Gravity.CENTER
             text = Html.fromHtml(
-                "<a href=\"https://github.com/rubberpencils/appblock\">Open source</a> under MIT. " +
-                    "Feedback? <a href=\"mailto:support@robinroy.xyz\">Email me</a>. " +
+                "<a href=\"https://github.com/rubberpencils/moly\">Open source</a> under MIT. " +
+                    "Feedback? <a href=\"mailto:support@trymoly.com\">Email me</a>. " +
                     "Made by <a href=\"https://x.com/_RobinRoy\">robin</a>.",
                 Html.FROM_HTML_MODE_LEGACY)
             movementMethod = LinkMovementMethod.getInstance()
@@ -587,7 +587,7 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams(Ui.dp(context, 60), Ui.dp(context, 60)))
                 addView(LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(Ui.display(context, "AppBlock", 30f))
+                    addView(Ui.display(context, "Moly", 30f))
                     addView(Ui.muted(context, "Version $version", 14f),
                         Ui.lp().apply { topMargin = Ui.dp(context, 4) })
                 }, Ui.lp(0).apply { weight = 1f; marginStart = Ui.dp(context, 18) })
@@ -647,7 +647,7 @@ class MainActivity : Activity() {
                 if (accessibilityOn(this)) openAccessibilitySettings() else accessibilityDisclosure()
             // The direct "allow?" dialog can only grant. Once granted, tapping
             // the row goes to the battery-optimization list instead, where the
-            // exemption can be reviewed and undone (find AppBlock there).
+            // exemption can be reviewed and undone (find Moly there).
             Storage.Requirement.BATTERY ->
                 if (batteryExempt(this))
                     startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
@@ -666,8 +666,8 @@ class MainActivity : Activity() {
      * ahead of the system's own (scarier) "full control" dialog.
      */
     private fun accessibilityDisclosure() {
-        Sheet.confirm(this, "Turn on AppBlock in Accessibility",
-            "AppBlock uses Android's accessibility service to see which apps are on " +
+        Sheet.confirm(this, "Turn on Moly in Accessibility",
+            "Moly uses Android's accessibility service to see which apps are on " +
                 "screen, split screen and pop-up windows included, and to put the " +
                 "block wall over an app whose time is up.\n\n" +
                 "It only looks at which app each window belongs to (and, if you " +
@@ -676,11 +676,11 @@ class MainActivity : Activity() {
                 "you leaves your phone. (In strict mode, if you turn it on, it also " +
                 "looks for its own name on Settings' screens, to cover the ones that " +
                 "would switch it off.)\n\n" +
-                "On the next screen, find AppBlock (under Installed apps or Downloaded " +
+                "On the next screen, find Moly (under Installed apps or Downloaded " +
                 "apps) and turn it on. Android will warn that it can see and control " +
                 "the screen: that's what every accessibility service is allowed, not " +
-                "what AppBlock does.\n\n" +
-                "Is the switch greyed out? Open AppBlock's App info, tap ⋮ at the top, " +
+                "what Moly does.\n\n" +
+                "Is the switch greyed out? Open Moly's App info, tap ⋮ at the top, " +
                 "choose \"Allow restricted settings\", then try again.",
             yes = "Agree and continue", no = "Not now", onYes = ::openAccessibilitySettings)
     }
@@ -689,7 +689,7 @@ class MainActivity : Activity() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
-    /** System dialog asking to exempt AppBlock from battery optimization. */
+    /** System dialog asking to exempt Moly from battery optimization. */
     private fun requestBatteryExemption() {
         startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, packageUri(this)))
     }

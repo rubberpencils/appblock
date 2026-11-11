@@ -15,7 +15,7 @@ import android.widget.TextView
 /**
  * Setting up strict mode with the way out chosen on StrictActivity: how it
  * works, the cooldown's length (for a cooldown), the optional emergency
- * passes, then "Turn on strict mode". That asks the user to make AppBlock a
+ * passes, then "Turn on strict mode". That asks the user to make Moly a
  * device admin, which is when strict mode goes on (Strict.adminEnabled).
  */
 class StrictSetupActivity : Activity() {
@@ -86,7 +86,7 @@ class StrictSetupActivity : Activity() {
             setOnClickListener { passOn.toggle() }
         }, 20)
         put(Ui.muted(this, "For real emergencies. A pass opens your blocked apps, and only counts down while you're in one. " +
-            "It doesn't switch off strict mode, so AppBlock still can't be uninstalled or stopped. Used time " +
+            "It doesn't switch off strict mode, so Moly still can't be uninstalled or stopped. Used time " +
             "comes back as it rolls out of the window, like your app limits.", 14f), 8)
         val startPass = last.pass ?: Storage.PASS_PRESETS.first()
         val allow = SpanPicker(this, "Allow", listOf(Storage.SpanUnit.MIN, Storage.SpanUnit.HR), startPass.allowMin)
@@ -163,9 +163,9 @@ class StrictSetupActivity : Activity() {
      */
     private fun confirm(cooldownMin: Int, pass: Rule?) {
         Sheet.confirm(this, "One more step",
-            "Let AppBlock stop uninstalls: Android asks you to make it a device admin. It gets no " +
+            "Let Moly stop uninstalls: Android asks you to make it a device admin. It gets no " +
                 "other powers, and lets go as soon as strict mode ends.\n\n" +
-                "While strict mode is on, AppBlock also looks for its own name on the screens of " +
+                "While strict mode is on, Moly also looks for its own name on the screens of " +
                 "Settings, the uninstall prompt and the permission pages, and covers the ones that " +
                 "would switch it off. It reads nothing else there, and nothing leaves your phone.\n\n" +
                 "On the next screen, tap Activate.",

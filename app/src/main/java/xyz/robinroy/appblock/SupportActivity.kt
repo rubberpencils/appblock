@@ -41,6 +41,6 @@ class SupportActivity : Activity() {
     }
 
     companion object {
-        const val EMAIL = "support@robinroy.xyz"
+        const val EMAIL = "support@trymoly.com"
     }
 }

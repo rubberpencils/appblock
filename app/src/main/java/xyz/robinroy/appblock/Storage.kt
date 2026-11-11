@@ -87,7 +87,7 @@ object Storage {
      * The apps on screen and the area each one covers. Every app window
      * counts, not just the one in front: both halves of a split screen and a
      * floating pop-up window are on screen together. An app with several
-     * windows (a dialog over it) gets the area around all of them. AppBlock's
+     * windows (a dialog over it) gets the area around all of them. Moly's
      * own windows are skipped.
      */
     fun appsOnScreen(windows: List<ScreenWindow>, self: String): Map<String, Bounds> {
@@ -159,7 +159,7 @@ object Storage {
     // The apps whose feed can be blocked are FEEDS, below. How to spot the
     // feed in each comes from a signed rules file (rules/v1/rules.json in
     // the repo): bundled in the APK, and fetched again from
-    // appblock.robinroy.xyz so a redesign is fixed without an app update. A
+    // trymoly.com so a redesign is fixed without an app update. A
     // rule names the player's view ids, never text, so it works in every
     // language. However the player opened (a tab, a link, a DM, a tap on a
     // thumbnail), the wall goes up while it fills the app's window; a
@@ -201,8 +201,8 @@ object Storage {
      */
     const val RULES_FORMAT = "v1"
 
-    /** Where the rules are fetched from: this repo's GitHub Pages, over HTTPS only. */
-    const val RULES_URL = "https://appblock.robinroy.xyz/$RULES_FORMAT/rules.signed.json"
+    /** Where the rules are fetched from: this repo's server (server/), over HTTPS only. */
+    const val RULES_URL = "https://trymoly.com/$RULES_FORMAT/rules.signed.json"
 
     /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
     private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
@@ -406,7 +406,7 @@ object Storage {
     }
 
     /**
-     * Everything AppBlock can't work without, as data. Each entry carries its
+     * Everything Moly can't work without, as data. Each entry carries its
      * own user-facing copy, and every surface generates itself from this
      * list: the home screen's "Finish setup" checklist, the "Block an app"
      * guard sheet, the About permissions rows. Declaration
@@ -422,7 +422,7 @@ object Storage {
     ) {
         ACCESSIBILITY(
             "Accessibility",
-            "That's how AppBlock sees which apps are on screen, split " +
+            "That's how Moly sees which apps are on screen, split " +
                 "screen and pop-up windows included, and how it puts the " +
                 "wall over one whose time is up. It only looks at which app " +
                 "each window belongs to, never at what's inside it (except " +
@@ -433,9 +433,9 @@ object Storage {
         BATTERY(
             "Unrestricted battery",
             "Your phone's battery saver puts background apps to sleep, and " +
-                "a sleeping blocker can't block. This lets AppBlock stay " +
+                "a sleeping blocker can't block. This lets Moly stay " +
                 "awake, at a tiny battery cost. So if your phone ever " +
-                "flags AppBlock for using battery in the background, " +
+                "flags Moly for using battery in the background, " +
                 "that's not a bug. That's the watchman staying on duty.",
             "Required. Stops the phone's battery saver from killing the blocker."),
     }
@@ -603,7 +603,7 @@ object Storage {
     // The usage logs and strict mode's times are wall-clock times, and the
     // user can set the wall clock to anything: forward, and the rolling
     // window no longer holds the time they used; back, and it lies in the
-    // future. So AppBlock watches for the clock being moved and shifts every
+    // future. So Moly watches for the clock being moved and shifts every
     // stored time by as much, so past use keeps its age (issue #7).
 
     /**
@@ -655,12 +655,12 @@ object Storage {
     fun shiftLog(log: List<Pair<Long, Long>>, by: Long): List<Pair<Long, Long>> =
         log.map { (start, end) -> start + by to end + by }
 
-    // ---- strict mode: AppBlock locks itself in until the user's chosen way out ----
+    // ---- strict mode: Moly locks itself in until the user's chosen way out ----
     //
-    // While it's on, AppBlock is a device admin (so Android refuses to
+    // While it's on, Moly is a device admin (so Android refuses to
     // uninstall it), the blocker walls the system's pages that could switch
     // it off, and the rules can only get stricter. It ends only through the
-    // way out chosen when it went on, safe mode (AppBlock finds its admin
+    // way out chosen when it went on, safe mode (Moly finds its admin
     // switched off), or adb.
 
     /** How strict mode is turned off: only while the phone is plugged in, or after a cooldown. */
@@ -668,7 +668,7 @@ object Storage {
 
     /**
      * Strict mode's state. `pending`: chosen, waiting for the user to make
-     * AppBlock a device admin. `cooldownMin` only means something for
+     * Moly a device admin. `cooldownMin` only means something for
      * COOLDOWN; `pass` is the emergency-pass budget, null without passes.
      * `cooldownEnds` and `passStarted` are wall-clock times, 0 when there's
      * no cooldown counting or no pass open; `passUses` is the pass's own
@@ -878,8 +878,8 @@ object Storage {
 
     /**
      * Whether a system screen names the app (any of its texts holds `label`,
-     * "AppBlock"): its App info, its Accessibility switch and the "Stop
-     * AppBlock?" dialog, its storage, its device admin page, the uninstall
+     * "Moly"): its App info, its Accessibility switch and the "Stop
+     * Moly?" dialog, its storage, its device admin page, the uninstall
      * dialog, Safety Center's "Remove access" card, and the lists that lead
      * to them.
      */
@@ -887,17 +887,17 @@ object Storage {
 
     /**
      * The system apps to wall in strict mode: those on screen naming
-     * AppBlock (`naming`), and those walled before that are still on screen.
+     * Moly (`naming`), and those walled before that are still on screen.
      * A wall stays until its app leaves the screen, so a page doesn't come
-     * free by scrolling AppBlock's name away, and a dialog over it ("Force
+     * free by scrolling Moly's name away, and a dialog over it ("Force
      * stop?", "Delete app data?", which don't name it) stays covered.
      */
     fun strictWalls(walledBefore: Set<String>, onScreen: Set<String>, naming: Set<String>): Set<String> =
         walledBefore.intersect(onScreen) + naming
 
-    // ---- screen time: AppBlock's own history of what was on screen, from Android's usage events ----
+    // ---- screen time: Moly's own history of what was on screen, from Android's usage events ----
     //
-    // Android keeps its usage events for a week or so. AppBlock copies them,
+    // Android keeps its usage events for a week or so. Moly copies them,
     // as sessions (an app, from when it came on screen to when it left),
     // into a database of its own (History.kt) and keeps them for good, so the
     // home screen can show any day's screen time. These are the decisions;
@@ -1438,7 +1438,7 @@ object Storage {
      * where that one stopped (sessionSpan). The service flushes a running
      * session every few seconds, so without merging a week-long window would hold
      * thousands of entries. A session that starts before the last entry
-     * (the clock set back without AppBlock seeing it) is an entry of its
+     * (the clock set back without Moly seeing it) is an entry of its
      * own, never swallowed by that one.
      */
     fun appendUsage(log: List<Pair<Long, Long>>, start: Long, end: Long, cutoff: Long):
@@ -1517,7 +1517,7 @@ object Storage {
 
     // Strict mode lives in a file of its own ("strict"), which Auto Backup
     // leaves out (res/xml/backup_rules.xml, data_extraction_rules.xml): on
-    // a new phone AppBlock isn't a device admin, so a restored "on" would be
+    // a new phone Moly isn't a device admin, so a restored "on" would be
     // a lie. One JSON blob:
     //
     //   {"on": true, "pending": false, "wayOut": "cooldown", "cooldownMin": 15,

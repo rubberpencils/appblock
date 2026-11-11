@@ -18,7 +18,7 @@ import android.util.Log
 
 /**
  * Strict mode's moving parts, around the decisions in Storage: turning it
- * on once AppBlock is a device admin, the cooldown and the emergency pass
+ * on once Moly is a device admin, the cooldown and the emergency pass
  * with their notifications, and every way it ends. The screens
  * (StrictActivity), the blocker (BlockerService) and the receivers below
  * all go through here, so each step happens the same way whoever starts it.
@@ -39,15 +39,15 @@ object Strict {
 
     fun adminActive(ctx: Context) = dpm(ctx).isAdminActive(admin(ctx))
 
-    /** The system's "Activate device admin app?" page for AppBlock. */
+    /** The system's "Activate device admin app?" page for Moly. */
     fun activateIntent(ctx: Context): Intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
         .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin(ctx))
         .putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-            "Strict mode: while it's on, Android won't let AppBlock be uninstalled.")
+            "Strict mode: while it's on, Android won't let Moly be uninstalled.")
 
     /**
      * The system apps holding a way around strict mode, which the blocker
-     * walls while they show AppBlock's name: whatever opens Settings, App
+     * walls while they show Moly's name: whatever opens Settings, App
      * info, Accessibility, the device admin page, the uninstall dialog and
      * the permission pages (Safety Center's "Remove access" card is in the
      * permission controller). Found on the phone, since makers move them;
@@ -81,7 +81,7 @@ object Strict {
         (ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             ?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
 
-    /** Chosen on the setup screen: waits for the user to make AppBlock a device admin. */
+    /** Chosen on the setup screen: waits for the user to make Moly a device admin. */
     fun choose(ctx: Context, wayOut: Storage.WayOut, cooldownMin: Int, pass: Rule?) {
         Storage.saveStrict(ctx, Storage.loadStrict(ctx).copy(
             pending = true, wayOut = wayOut, cooldownMin = cooldownMin, pass = pass))
@@ -94,7 +94,7 @@ object Strict {
     }
 
     /**
-     * AppBlock just became a device admin. If the user chose strict mode,
+     * Moly just became a device admin. If the user chose strict mode,
      * it's on. If not (made one from somewhere else), it lets go again:
      * an admin with no strict mode would only block uninstalling, with no
      * way out shown anywhere.
@@ -129,8 +129,8 @@ object Strict {
      * Strict mode, brought up to date: the clock checked (Clock.check, which
      * moves the usage logs too), a cooldown that ran out unlocks Turn off, a
      * pass that ran out is stopped, and an admin found off (switched off in
-     * safe mode, where AppBlock doesn't run) ends it too. Run whenever
-     * AppBlock looks at strict mode: the screens, the blocker, the
+     * safe mode, where Moly doesn't run) ends it too. Run whenever
+     * Moly looks at strict mode: the screens, the blocker, the
      * clock-change receiver.
      */
     fun check(ctx: Context): Storage.Strict {
@@ -138,7 +138,7 @@ object Strict {
         var s = Storage.loadStrict(ctx)
         if (!s.on) {
             // An admin left over with strict mode off (an ending that didn't
-            // finish): let go, so AppBlock can be uninstalled.
+            // finish): let go, so Moly can be uninstalled.
             if (!s.pending && adminActive(ctx)) releaseAdmin(ctx)
             return s
         }
@@ -173,9 +173,9 @@ object Strict {
 
     /**
      * Strict mode over: the running cooldown and pass dropped with their
-     * notifications, and the admin let go so AppBlock can be uninstalled
+     * notifications, and the admin let go so Moly can be uninstalled
      * as usual. Safe mode is told in a notification (the user may not be
-     * looking at AppBlock).
+     * looking at Moly).
      */
     fun end(ctx: Context, why: Ending): Storage.Strict {
         val s = Storage.strictEnded(Storage.loadStrict(ctx))
@@ -185,7 +185,7 @@ object Strict {
         releaseAdmin(ctx)
         Log.i(TAG, "off: $why")
         when (why) {
-            Ending.ADMIN_OFF -> notifyOnce(ctx, "Strict mode ended", "AppBlock's device admin was switched off.")
+            Ending.ADMIN_OFF -> notifyOnce(ctx, "Strict mode ended", "Moly's device admin was switched off.")
             else -> {}
         }
         changed(ctx)
@@ -379,7 +379,7 @@ object Strict {
 }
 
 /**
- * AppBlock as a device admin, declaring no admin powers at all
+ * Moly as a device admin, declaring no admin powers at all
  * (res/xml/strict_admin.xml): it's one only so that Android refuses to
  * uninstall it while strict mode is on.
  */
@@ -388,7 +388,7 @@ class StrictAdmin : DeviceAdminReceiver() {
 
     /**
      * Switched off, which strict mode's walls keep the user from doing
-     * except in safe mode (where AppBlock doesn't run, so this may never
+     * except in safe mode (where Moly doesn't run, so this may never
      * arrive: Strict.check notices instead) or after strict mode let go.
      * Android still counts the admin as active until this returns, so it
      * ends strict mode itself rather than leaving it to Strict.check.

@@ -102,7 +102,7 @@ describe.each(rulesFormats(rules))("the %s rules", (format) => {
   const signed = readFileSync(join(rules, format, "rules.signed.json"));
 
   it("are the signed file, byte for byte", async () => {
-    const response = await get(path, { "User-Agent": "AppBlock" });
+    const response = await get(path, { "User-Agent": "Moly" });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(Buffer.from(await response.arrayBuffer()).equals(signed)).toBe(true);
