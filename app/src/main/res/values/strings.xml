@@ -2,7 +2,7 @@
 <resources>
     <!-- Static shortcut labels must be string resources -->
     <string name="shortcut_dont_give_up">Don\'t give up!</string>
-    <string name="shortcut_contact_support">Contact support</string>
+    <string name="shortcut_contact_support">Help &amp; feedback</string>
     <!-- Shown on the system's "Activate device admin app?" page for strict mode -->
     <string name="strict_admin_description">Strict mode. While it\'s on, Android won\'t let Moly be uninstalled. It asks for no other admin powers, and lets go when strict mode ends.</string>
     <!-- Shown under Moly on the system's Accessibility settings page -->

@@ -45,6 +45,9 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.edgeToEdge(window)
+        // Since when Moly has been installed: kept (and backed up) from the
+        // first start, so it is there to go with feedback on a later phone.
+        try { Storage.noteInstallTimes(this, Feedback.androidInstallTimes(this)) } catch (e: Exception) {}
 
         if (!Storage.onboardingSeen(this)) {
             startActivity(Intent(this, OnboardingActivity::class.java))
@@ -571,7 +574,6 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             text = Html.fromHtml(
                 "<a href=\"https://github.com/rubberpencils/moly\">Open source</a> under MIT. " +
-                    "Feedback? <a href=\"mailto:support@trymoly.com\">Email me</a>. " +
                     "Made by <a href=\"https://x.com/_RobinRoy\">robin</a>.",
                 Html.FROM_HTML_MODE_LEGACY)
             movementMethod = LinkMovementMethod.getInstance()
@@ -628,6 +630,10 @@ class MainActivity : Activity() {
             })
             addView(hairline())
             addView(View(context), LinearLayout.LayoutParams(Ui.MATCH, Ui.dp(context, 20), 1f))
+            // A word to the maker, or a call for help, at the foot: a form of its own (FeedbackPages).
+            addView(Ui.secondaryButton(context, FeedbackPages.TITLE) {
+                sheet.push(FeedbackPages.form(this@MainActivity, sheet))
+            }, Ui.lp(Ui.WRAP).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = Ui.dp(context, 16) })
             addView(links)
         }
         sheet.show(first)

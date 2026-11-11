@@ -80,7 +80,8 @@ Requirements:
   `adb` lives at `<sdk.dir>/platform-tools/adb` and may not be on `PATH`.
 - **Node and pnpm**, for the server: the Node version in
   `server/.node-version`, then `pnpm install` in `server/`. Also needed to
-  commit a change to `web/` or `rules/` (the hook below).
+  commit a change to `web/` or `rules/` (the hook below), and by
+  `scripts/e2e.sh`, which starts the server for its tests.
 
 First time in a clone, before the first commit (agents: do this yourself,
 don't wait to be asked; check with `git config core.hooksPath`):
@@ -116,7 +117,8 @@ four jobs must pass before a PR merges:
 - `app-unit-tests`: the app's unit tests, and a compile.
 - `e2e-android-14`, `e2e-android-16`: the suite above on fresh emulators,
   on the Google Play image like `scripts/emulator.sh`'s, and on Android 16,
-  the version the app targets. It installs `fixture/`, a stand-in app with
+  the version the app targets, with the server running beside them for the
+  full-stack tests. It installs `fixture/`, a stand-in app with
   YouTube's and Instagram's player view ids, for the Shorts and Reels tests.
 - `server-checks`: `pnpm check` in `server/`.
 
@@ -129,7 +131,7 @@ Build:
 ```sh
 ./gradlew assembleDebug          # APK at app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # JUnit tests (also run by the pre-commit hook)
-scripts/e2e.sh                   # end-to-end tests on the emulator (also in CI)
+scripts/e2e.sh                   # end-to-end tests on the emulator, with the server up (also in CI)
 ```
 
 ## Build → phone loop (phone connected over USB)
@@ -138,6 +140,8 @@ scripts/e2e.sh                   # end-to-end tests on the emulator (also in CI)
 scripts/deploy.sh          # tests + release APK + adb install -r (keeps data/grants)
 scripts/fresh-install.sh   # same build, but uninstall first: wipes all app state
                            # to test the first-run flow
+scripts/local.sh           # the release build, talking to `pnpm dev` on this machine
+                           # instead of trymoly.com (start that first)
 ```
 
 Both handle JDK 17 and the adb path (via `scripts/env.sh`) themselves. Use
@@ -290,14 +294,18 @@ it hands back for the 404 page. From `server/`:
 
 ```sh
 pnpm install     # once
-pnpm dev         # the site and the API at http://localhost:8787
+pnpm dev         # the site and the API at http://localhost:8787, with a local database
+pnpm dev:mail    # the same, but its mail is really sent (to FEEDBACK_TO in .dev.vars)
+pnpm db:feedback # the feedback in the local database
 pnpm check       # lint + typecheck + every test: CI's `server-checks` job
 pnpm format      # apply the formatter
 ```
 
 `pnpm dev` is `wrangler dev`: the Worker in workerd, the runtime Cloudflare
 runs in production, with the static site in front of it as there. None of
-this needs a Cloudflare account.
+this needs a Cloudflare account. Running the app against it, looking
+inside the local database and mail, and the full-stack tests are in
+[docs/local-dev.md](docs/local-dev.md).
 
 - **Tests** are in `server/test/` (Vitest), in three layers: `unit/` for
   plain logic, in Node; `worker/` for the Worker's routes, inside workerd;
@@ -306,6 +314,11 @@ this needs a Cloudflare account.
   fetch (the signed file, its `ETag`, the `304`) is held to it there.
   `pnpm test --project unit` runs one layer. The pre-commit hook's own
   tests are in `unit/` too.
+- **The database** (D1, SQLite) is made of `migrations/*.sql`, and every
+  query is in `src/db.ts`. Until the first deploy a table is changed in
+  its file and the local copy reset (delete `.wrangler/state`); after it,
+  ask the maintainer before writing a migration. `pnpm dev` only prints
+  mail (`src/email.ts`).
 - **Deploys** happen in CI only, never from a laptop: on a push to `main`
   that changes `server/`, `web/` or `rules/`, `Publish site` runs the
   app's unit tests and `pnpm check`, then `wrangler deploy`. It publishes

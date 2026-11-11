@@ -207,6 +207,16 @@ object Storage {
     /** Where the rules are fetched from: this repo's server (server/), over HTTPS only. */
     const val RULES_URL = "https://$RULES_HOST/$RULES_FORMAT/rules.signed.json"
 
+    /**
+     * Whether a connection may be plain HTTP: only to this machine (the
+     * device's own localhost, or 10.0.2.2 from an emulator), where a
+     * developer's server is (docs/local-dev.md), and only in the two builds
+     * that are never released. Everything else is HTTPS or nothing.
+     */
+    fun plainHttpAllowed(protocol: String, host: String, buildType: String): Boolean =
+        protocol == "http" && buildType in setOf("debug", "local") &&
+            host in setOf("localhost", "127.0.0.1", "10.0.2.2")
+
     /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
     private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
 
@@ -1607,6 +1617,230 @@ object Storage {
     /** Written at once (commit): a receiver or the service may read it straight after. */
     fun saveStrict(ctx: Context, s: Strict) {
         ctx.getSharedPreferences(STRICT_PREFS, Context.MODE_PRIVATE).edit().putString("state", strictToJson(s)).commit()
+    }
+
+    // ---- feedback: a message to the maintainer, from the info sheet ----
+    //
+    // Sent to the server (server/, POST /api/feedback) with what Moly knows
+    // about itself: its version, the phone, how it is set up. Never which
+    // apps are limited, or anything about their use. The phone keeps a copy
+    // of each message sent, for "Your past feedback".
+
+    /** The longest message. The box stops there, and doesn't say so: it is more than anyone writes. */
+    const val FEEDBACK_MAX_CHARS = 20_000
+
+    /** Messages in any 24 hours; past that, the form sends people to email. */
+    const val FEEDBACK_DAILY = 10
+
+    /** How much past feedback the phone keeps: its messages' bytes. The oldest go first. */
+    const val FEEDBACK_KEEP_BYTES = 5L * 1024 * 1024
+
+    private const val DAY_MS = 86_400_000L
+
+    /** Support is someone stuck, who needs an answer; feedback is everything else. */
+    enum class FeedbackKind(val wire: String, val label: String) {
+        FEEDBACK("feedback", "Feedback"), SUPPORT("support", "Support")
+    }
+
+    /** A message sent: the id the server gave it, when, which kind, what it said, and where a reply was asked for. */
+    data class SentFeedback(
+        val id: String, val sentAt: Long, val message: String,
+        val kind: FeedbackKind = FeedbackKind.FEEDBACK, val contact: String? = null,
+    )
+
+    /** The message as it would be sent (no space around it), or null with nothing to send. */
+    fun feedbackMessage(typed: String): String? =
+        typed.trim().take(FEEDBACK_MAX_CHARS).ifEmpty { null }
+
+    /**
+     * The reply address as typed: null for none given, the address when it
+     * could be one (something@something.something, as the server checks).
+     * `ok` is false for text that isn't, and for none at all with a
+     * support request: say so instead of sending.
+     */
+    data class Contact(val address: String?, val ok: Boolean)
+
+    // The server's check (server/src/feedback.ts), to the letter: none of the
+    // characters that mean something else in a mail header, and no space of
+    // any kind. The spaces are spelled out (the ones JavaScript counts,
+    // and the control characters): a regex's own "any space" means one thing
+    // on Android and another on a desktop JVM, where the unit tests run.
+    private val ADDRESS = ("[^\\u0000-\\u0020\\u007f\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029" +
+        "\\u202f\\u205f\\u3000\\ufeff@<>()\\[\\]\",;:\\\\]").let { c -> Regex("$c+@$c+\\.$c+") }
+
+    fun feedbackContact(typed: String, kind: FeedbackKind = FeedbackKind.FEEDBACK): Contact {
+        val t = typed.trim()
+        return when {
+            // Support can only be answered by mail: no address, nothing to send.
+            t.isEmpty() -> Contact(null, kind != FeedbackKind.SUPPORT)
+            t.length <= 254 && ADDRESS.matches(t) -> Contact(t, true)
+            else -> Contact(null, false)
+        }
+    }
+
+    /** How many more can be sent at `now`: FEEDBACK_DAILY in any 24 hours. */
+    fun feedbackLeft(sentAt: List<Long>, now: Long): Int =
+        maxOf(0, FEEDBACK_DAILY - sentAt.count { it > now - DAY_MS && it <= now })
+
+    /** With none left: how long until one of the last day's falls out of it. 0 when one can be sent. */
+    fun feedbackWaitMs(sentAt: List<Long>, now: Long): Long {
+        if (feedbackLeft(sentAt, now) > 0) return 0
+        val recent = sentAt.filter { it > now - DAY_MS && it <= now }.sorted()
+        // The one whose leaving makes room: the FEEDBACK_DAILY-th newest.
+        return recent[recent.size - FEEDBACK_DAILY] + DAY_MS - now
+    }
+
+    /** The send times worth keeping: the last day's, which are all the limit ever looks at. */
+    fun feedbackTimesKept(sentAt: List<Long>, now: Long): List<Long> =
+        sentAt.filter { it > now - DAY_MS }.sorted().takeLast(FEEDBACK_DAILY)
+
+    /**
+     * Past feedback to keep, newest first: as many of the newest as fit in
+     * `maxBytes` (their messages, as UTF-8). The newest is always kept,
+     * whatever its size.
+     */
+    fun feedbackKept(all: List<SentFeedback>, maxBytes: Long = FEEDBACK_KEEP_BYTES): List<SentFeedback> {
+        val kept = mutableListOf<SentFeedback>()
+        var bytes = 0L
+        for (f in all.sortedByDescending { it.sentAt }) {
+            bytes += f.message.toByteArray(Charsets.UTF_8).size
+            if (kept.isNotEmpty() && bytes > maxBytes) break
+            kept += f
+        }
+        return kept
+    }
+
+    fun sentFeedbackToJson(all: List<SentFeedback>): String = JSONArray().apply {
+        for (f in all) put(JSONObject().put("id", f.id).put("at", f.sentAt).put("message", f.message)
+            .put("kind", f.kind.wire).apply { if (f.contact != null) put("contact", f.contact) })
+    }.toString()
+
+    fun sentFeedbackFromJson(json: String?): List<SentFeedback> = try {
+        val arr = JSONArray(json ?: "[]")
+        // Each on its own: one that can't be read costs only itself.
+        (0 until arr.length()).mapNotNull { i ->
+            try {
+                val o = arr.getJSONObject(i)
+                SentFeedback(o.getString("id"), o.getLong("at"), o.getString("message"),
+                    FeedbackKind.entries.first { it.wire == o.getString("kind") },
+                    if (o.has("contact")) o.getString("contact") else null)
+            } catch (e: Exception) { null }
+        }
+    } catch (e: Exception) { emptyList() }
+
+    /** When the app was first installed and last updated, in ms. */
+    data class InstallTimes(val first: Long, val updated: Long)
+
+    /**
+     * The install times to keep: the first install the phone's backup
+     * remembers (so a new phone doesn't make a long-time user new), else
+     * Android's for this phone; and the later of the two updates.
+     */
+    fun installTimes(kept: InstallTimes?, android: InstallTimes): InstallTimes =
+        if (kept == null) android
+        else InstallTimes(kept.first, maxOf(kept.updated, android.updated))
+
+    /** What Moly reports about itself with a message. */
+    data class FeedbackAbout(
+        val appVersion: String,
+        val appBuild: Long,
+        val androidVersion: String,
+        val androidSdk: Int,
+        /** Maker and model: "OnePlus CPH2401". */
+        val device: String,
+        val install: InstallTimes,
+        /** How it is set up: yes/no, counts and short words, never an app's name. */
+        val diagnostics: Map<String, Any>,
+    )
+
+    /** "OnePlus CPH2401"; just the model when it already starts with the maker ("Google Pixel 7" not twice). */
+    fun deviceName(maker: String, model: String): String {
+        val mk = maker.trim().replaceFirstChar { it.uppercase() }
+        val md = model.trim()
+        return when {
+            mk.isEmpty() -> md
+            md.startsWith(mk, ignoreCase = true) -> md
+            else -> "$mk $md"
+        }
+    }
+
+    /** The body of POST /api/feedback: the names the server reads (server/src/feedback.ts). */
+    fun feedbackBody(
+        id: String, kind: FeedbackKind, message: String, contact: String?, senderId: String, about: FeedbackAbout
+    ): String =
+        JSONObject().apply {
+            // The message's own id, the same on every try: a second try
+            // after a lost answer isn't a second message.
+            put("id", id)
+            put("kind", kind.wire)
+            put("message", message)
+            if (contact != null) put("contact", contact)
+            put("senderId", senderId)
+            put("appVersion", about.appVersion)
+            put("appBuild", about.appBuild)
+            put("androidVersion", about.androidVersion)
+            put("androidSdk", about.androidSdk)
+            put("device", about.device)
+            put("installedAt", about.install.first)
+            put("updatedAt", about.install.updated)
+            put("diagnostics", JSONObject().apply { for ((k, v) in about.diagnostics) put(k, v) })
+        }.toString()
+
+    /** The id of a message the server took (its 201's body), or null for anything else. */
+    fun feedbackId(status: Int, body: String?): String? = if (status != 201) null else try {
+        JSONObject(body ?: "").getString("id").ifEmpty { null }
+    } catch (e: Exception) { null }
+
+    /**
+     * Whether the server itself said no (a 4xx): trying again won't help,
+     * where a dropped connection or a server having a bad moment may.
+     */
+    fun feedbackRefused(status: Int): Boolean = status in 400..499
+
+    // Who is writing and since when, in its own small file ("identity.xml"),
+    // read at every start; the past feedback, which can be megabytes, in
+    // another ("feedback.xml"), read only when the form opens. Both go into
+    // Auto Backup, so they follow the user to a new phone.
+    const val IDENTITY_PREFS = "identity"
+    const val FEEDBACK_PREFS = "feedback"
+
+    /**
+     * The random id sent with feedback, made up on first use and kept:
+     * the same person's messages share it. Nothing about the phone or the
+     * user goes into it.
+     */
+    fun senderId(ctx: Context): String {
+        val p = ctx.getSharedPreferences(IDENTITY_PREFS, Context.MODE_PRIVATE)
+        p.getString("sender", null)?.let { return it }
+        val made = java.util.UUID.randomUUID().toString()
+        p.edit().putString("sender", made).apply()
+        return made
+    }
+
+    /** Keeps the install times (installTimes above) and returns them. */
+    fun noteInstallTimes(ctx: Context, android: InstallTimes): InstallTimes {
+        val p = ctx.getSharedPreferences(IDENTITY_PREFS, Context.MODE_PRIVATE)
+        val kept = if (p.contains("installed")) InstallTimes(p.getLong("installed", 0), p.getLong("updated", 0)) else null
+        val now = installTimes(kept, android)
+        if (now != kept) p.edit().putLong("installed", now.first).putLong("updated", now.updated).apply()
+        return now
+    }
+
+    fun loadSentFeedback(ctx: Context): List<SentFeedback> = sentFeedbackFromJson(
+        ctx.getSharedPreferences(FEEDBACK_PREFS, Context.MODE_PRIVATE).getString("sent", null))
+
+    fun loadFeedbackTimes(ctx: Context): List<Long> = try {
+        val arr = JSONArray(ctx.getSharedPreferences(FEEDBACK_PREFS, Context.MODE_PRIVATE).getString("times", "[]"))
+        (0 until arr.length()).map { arr.getLong(it) }
+    } catch (e: Exception) { emptyList() }
+
+    /** A message was sent: it joins the past feedback (cut to what's kept) and the day's count. */
+    fun addSentFeedback(ctx: Context, sent: SentFeedback) {
+        val times = feedbackTimesKept(loadFeedbackTimes(ctx) + sent.sentAt, sent.sentAt)
+        ctx.getSharedPreferences(FEEDBACK_PREFS, Context.MODE_PRIVATE).edit()
+            .putString("sent", sentFeedbackToJson(feedbackKept(loadSentFeedback(ctx) + sent)))
+            .putString("times", JSONArray(times).toString())
+            .apply()
     }
 
     // Convenience wrappers joining persistence with the pure math above.

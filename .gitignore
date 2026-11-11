@@ -27,3 +27,5 @@ trailer/
 
 # The cf (Cloudflare) CLI's local cache: which account this machine is signed in to
 .cloudflare/
+# Screenshots of a change, for looking at before it merges (E2e.shot in the e2e tests)
+.shots/

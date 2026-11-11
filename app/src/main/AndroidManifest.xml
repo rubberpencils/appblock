@@ -150,11 +150,11 @@
             android:exported="false"
             android:label="App usage" />
 
-        <!-- Target of the "Contact support" launcher shortcut -->
+        <!-- Target of the "Help & feedback" launcher shortcut -->
         <activity
             android:name=".SupportActivity"
             android:exported="false"
-            android:label="Contact support" />
+            android:label="Help &amp; feedback" />
 
         <!-- Strict mode's device admin. It asks for no admin powers
              (strict_admin.xml): being one is what makes Android refuse to

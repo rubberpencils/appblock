@@ -1,0 +1,6 @@
+# Copy to .dev.vars (gitignored) for `pnpm dev`. In production these are
+# secrets on the Worker (`wrangler secret put`), never in the repo.
+
+# Where feedback from the app is mailed. Locally nothing is sent: the mail
+# is printed in the terminal, so any address does.
+FEEDBACK_TO=you@example.com

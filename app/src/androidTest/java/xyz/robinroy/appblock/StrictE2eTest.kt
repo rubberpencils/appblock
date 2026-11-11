@@ -607,10 +607,16 @@ class StrictE2eTest {
     }
 
     @Test
-    fun contactSupport_showsTheAddress() {
+    fun helpAndFeedbackShortcut_opensTheFormAsASupportRequest() {
         freshState()
         ctx.startActivity(Intent(ctx, SupportActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        waitFor(text("Contact support"))
-        waitFor(text("support@trymoly.com"))
+        waitFor(text("Help & feedback"))
+        // Support is the one chosen, and the form asks for what support needs.
+        assertTrue(waitFor(text("Support")).isSelected)
+        assertFalse(waitFor(text("Feedback")).isSelected)
+        waitFor(By.clazz(android.widget.EditText::class.java).textContains("What's going wrong?"))
+        // Closing the form leaves nothing of it behind.
+        device.pressBack()
+        assertTrue(device.wait(Until.gone(text("Help & feedback")), E2e.WAIT))
     }
 }
