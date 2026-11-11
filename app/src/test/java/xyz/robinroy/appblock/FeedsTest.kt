@@ -157,13 +157,17 @@ class FeedsTest {
 
     @Test
     fun `the rules are fetched from the domain the server answers on`() {
-        val host = java.net.URI(Storage.RULES_URL).host
-        assertEquals("trymoly.com", host)
+        assertEquals("trymoly.com", Storage.RULES_HOST)
+        assertEquals("the host the user is told is the host fetched from",
+            Storage.RULES_HOST, java.net.URI(Storage.RULES_URL).host)
         // server/wrangler.jsonc gives that domain to the Worker that serves rules/:
-        // a build fetching from anywhere else would get no rules.
-        val worker = File("../server/wrangler.jsonc").readText()
-        assertTrue("server/wrangler.jsonc doesn't answer on $host",
-            worker.contains("\"pattern\": \"$host\", \"custom_domain\": true"))
+        // a build fetching from anywhere else would get no rules. Read without
+        // its comments, and whatever its spacing.
+        val worker = File("../server/wrangler.jsonc").readLines()
+            .joinToString("\n") { it.replace(Regex("""^\s*//.*$"""), "") }
+        val domains = Regex(""""pattern"\s*:\s*"([^"]+)"""").findAll(worker).map { it.groupValues[1] }.toList()
+        assertTrue("server/wrangler.jsonc answers on $domains, not ${Storage.RULES_HOST}",
+            Storage.RULES_HOST in domains)
     }
 
     // ---- when to fetch ----

@@ -201,8 +201,11 @@ object Storage {
      */
     const val RULES_FORMAT = "v1"
 
+    /** The site the rules are fetched from, as the user is told it before blocking a feed. */
+    const val RULES_HOST = "trymoly.com"
+
     /** Where the rules are fetched from: this repo's server (server/), over HTTPS only. */
-    const val RULES_URL = "https://trymoly.com/$RULES_FORMAT/rules.signed.json"
+    const val RULES_URL = "https://$RULES_HOST/$RULES_FORMAT/rules.signed.json"
 
     /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
     private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")

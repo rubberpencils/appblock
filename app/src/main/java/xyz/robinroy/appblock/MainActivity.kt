@@ -480,7 +480,7 @@ class MainActivity : Activity() {
                 "name in $app's code. It reads no text and nothing about the " +
                 "videos, and nothing leaves your phone.\n\n" +
                 "$app changes often, so while $app is open Moly checks every " +
-                "few hours for updated rules at trymoly.com. That " +
+                "few hours for updated rules at ${Storage.RULES_HOST}. That " +
                 "download sends nothing about you.",
             yes = "Block $name", no = "Not now") {
             Storage.setFeedBlocked(this, pkg, true)

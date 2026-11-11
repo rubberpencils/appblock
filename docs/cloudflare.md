@@ -65,8 +65,9 @@ plain `http://www.trymoly.com` misses the redirect rule and hangs.
 **Web Analytics** (Observability → Analytics → Web analytics): on for
 `trymoly.com`. Cloudflare adds its own script to pages opened in a browser
 and counts visits and load times, without cookies. It sees nothing of the
-app's requests or the API; those are in the Worker's logs (Workers & Pages →
-`moly` → Observability).
+app's requests or the API. API requests are in the Worker's logs (Workers &
+Pages → `moly` → Observability); the app's rules downloads are files, which
+run no code, so they show only in the domain's traffic totals.
 
 **Leave off** (Security): Bot Fight Mode and Under Attack Mode. Both
 challenge visitors that aren't browsers, and the app's rules download isn't
