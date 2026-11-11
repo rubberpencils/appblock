@@ -34,8 +34,8 @@
     {
       "binding": "DB",
       "database_name": "moly",
-      // TODO before the first deploy: the real database's id, once it exists.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Made once, by hand, in Eastern North America (docs/cloudflare.md).
+      "database_id": "f9e777a4-8f0e-4f68-a703-2ffb7bca9626",
       "migrations_dir": "migrations"
     }
   ],
