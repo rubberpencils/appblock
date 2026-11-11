@@ -333,12 +333,29 @@ object E2e {
         Storage.addUsage(ctx, pkg, now - startAgo, now - endAgo, windowMin)
     }
 
-    /** Moly's home screen, freshly built from storage. */
+    /**
+     * Moly's home screen, freshly built from storage. Opened while a screen
+     * of Moly's is already showing (the home screen itself, often), that
+     * old screen is still there for a moment and would answer for the new
+     * one: a button found on it is gone by the time it's tapped. So this
+     * waits for the old windows to go and a new one to come before it looks.
+     */
     fun openHome() {
+        val before = molyWindows()
         ctx.startActivity(Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+        // (Not a failure by itself if the windows can't be told apart: the check below still holds.)
+        eventually { molyWindows().let { now -> now.any { it !in before } && now.none { it in before } } }
         check(device.wait(Until.hasObject(text("Block an app")), WAIT)) { "home screen didn't open" }
     }
+
+    /** The ids of Moly's own screens' windows (activities and their sheets; not the block wall, which is an overlay). */
+    private fun molyWindows(): Set<Int> = try {
+        uiAutomation.windows.filter {
+            it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION &&
+                it.root?.packageName?.toString() == ctx.packageName
+        }.map { it.id }.toSet()
+    } catch (e: Exception) { emptySet() }
 
     /** Launch another app the way its launcher icon would, and wait for it to be in front. */
     fun openApp(pkg: String) {
