@@ -1,7 +1,7 @@
 # Security
 
 If you find a security issue, please **don't open a public issue** — email
-**support@robinroy.xyz** instead.
+**support@trymoly.com** instead.
 
 Worth knowing when assessing impact: the app runs an **accessibility service** (it
 can see which apps are on screen, split screen and pop-ups included, and draw the
