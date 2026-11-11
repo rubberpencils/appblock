@@ -43,6 +43,14 @@ function standIn(path: string, name: string, status = 0): void {
 // These tests run inside the hook they test (a commit runs `pnpm check`),
 // where git has set GIT_INDEX_FILE and the like for the real repo. Nothing
 // here may inherit them: the scratch repo's git would write to that index.
+/**
+ * An environment holding only these variables. (Typed for the Worker's
+ * required secrets too, which a child process here has no use for.)
+ */
+function only(vars: Record<string, string>): NodeJS.ProcessEnv {
+  return vars as NodeJS.ProcessEnv;
+}
+
 function git(...args: string[]): void {
   const done = spawnSync(
     "git",
@@ -50,7 +58,7 @@ function git(...args: string[]): void {
     {
       cwd: repo,
       encoding: "utf8",
-      env: { PATH: process.env.PATH ?? "", HOME: root },
+      env: only({ PATH: process.env.PATH ?? "", HOME: root }),
     },
   );
   if (done.status !== 0)
@@ -62,7 +70,7 @@ function runHook(path = `${bin}:/usr/bin:/bin`) {
   const done = spawnSync("sh", [hook], {
     cwd: repo,
     encoding: "utf8",
-    env: { PATH: path, HOME: root },
+    env: only({ PATH: path, HOME: root }),
   });
   return {
     status: done.status,

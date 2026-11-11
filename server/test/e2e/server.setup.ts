@@ -1,9 +1,13 @@
 // Starts the real local server (`wrangler dev`: the Worker in workerd, with
 // the static site in front of it, as in production) on a free port for the
-// end-to-end tests, and stops it afterwards.
-import { type ChildProcess, spawn } from "node:child_process";
+// end-to-end tests, and stops it afterwards. Its database is a scratch one,
+// made for the run with the tables from migrations/: the tests never touch
+// the one `pnpm dev` uses.
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { TestProject } from "vitest/node";
 
@@ -48,19 +52,38 @@ async function ready(child: ChildProcess, baseUrl: string, log: () => string) {
 export default async function setup(project: TestProject) {
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  const wrangler = resolve(server, "node_modules", ".bin", "wrangler");
+  const scratch = mkdtempSync(join(tmpdir(), "moly-e2e-"));
+  const state = join(scratch, "state");
+  // What the server prints, kept where a test can read it: locally a mail
+  // isn't sent, it is printed.
+  const logFile = join(scratch, "server.log");
+  writeFileSync(logFile, "");
+  execFileSync(
+    wrangler,
+    ["d1", "migrations", "apply", "moly", "--local", "--persist-to", state],
+    { cwd: server, stdio: "pipe" },
+  );
+
   let output = "";
   // Its own process group, so stopping it also stops the workerd it starts.
   const child = spawn(
-    resolve(server, "node_modules", ".bin", "wrangler"),
-    ["dev", "--port", String(port), "--ip", "127.0.0.1"],
+    wrangler,
+    [
+      "dev",
+      ...["--port", String(port), "--ip", "127.0.0.1"],
+      ...["--persist-to", state],
+      // A secret in production. Nothing is sent from here.
+      ...["--var", "FEEDBACK_TO:maintainer@example.com"],
+    ],
     { cwd: server, detached: true, stdio: ["ignore", "pipe", "pipe"] },
   );
-  child.stdout?.on("data", (chunk) => {
+  const keep = (chunk: unknown) => {
     output += chunk;
-  });
-  child.stderr?.on("data", (chunk) => {
-    output += chunk;
-  });
+    writeFileSync(logFile, String(chunk), { flag: "a" });
+  };
+  child.stdout?.on("data", keep);
+  child.stderr?.on("data", keep);
   const stop = () => {
     if (child.pid && child.exitCode === null && child.signalCode === null) {
       try {
@@ -69,6 +92,7 @@ export default async function setup(project: TestProject) {
         // Already gone.
       }
     }
+    rmSync(scratch, { recursive: true, force: true });
   };
   // Vitest doesn't run the teardown when the run is interrupted (Ctrl-C, or
   // a hook that is killed), and the server's own process group wouldn't get
@@ -87,11 +111,17 @@ export default async function setup(project: TestProject) {
     throw error;
   }
   project.provide("baseUrl", baseUrl);
+  project.provide("serverState", state);
+  project.provide("serverLog", logFile);
   return stop;
 }
 
 declare module "vitest" {
   export interface ProvidedContext {
     baseUrl: string;
+    /** Where the server keeps its local database: `wrangler d1 execute --persist-to`. */
+    serverState: string;
+    /** A file holding everything the server has printed so far. */
+    serverLog: string;
   }
 }

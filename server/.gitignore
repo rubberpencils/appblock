@@ -7,3 +7,5 @@ site/
 worker-configuration.d.ts
 # Local secrets for `wrangler dev`
 .dev.vars
+# Written by `pnpm dev:mail` (scripts/dev-real-mail.ts)
+wrangler.real-mail.jsonc

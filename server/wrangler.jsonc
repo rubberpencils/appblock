@@ -27,6 +27,25 @@
     "run_worker_first": ["/api/*"]
   },
 
+  // The database (D1, SQLite): feedback from the app so far. Its tables are
+  // the SQL files in migrations/, applied to the local copy by `pnpm dev`
+  // and to the real one by the `Publish site` workflow before a deploy.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "moly",
+      // TODO before the first deploy: the real database's id, once it exists.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Mail from the Worker, to addresses verified on the account only (the
+  // maintainer's inbox): free on this plan. `wrangler dev` doesn't send:
+  // it prints each message. Where it goes is the FEEDBACK_TO secret.
+  "send_email": [{ "name": "EMAIL" }],
+  "secrets": { "required": ["FEEDBACK_TO"] },
+
   // Cloudflare creates the DNS record and the certificate for it.
   "routes": [{ "pattern": "trymoly.com", "custom_domain": true }],
   // Only on trymoly.com: no second copy at moly.<account>.workers.dev.

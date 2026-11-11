@@ -4,10 +4,95 @@
 // request for a path that doesn't exist, unless it is a browser opening a
 // page (Cloudflare answers that with 404.html itself).
 import { Hono } from "hono";
+import {
+  countFromSender,
+  markEmailed,
+  type StoredFeedback,
+  saveFeedback,
+} from "./db.ts";
+import { feedbackMail, sendEmail } from "./email.ts";
+import { MAX_BODY_BYTES, parseFeedback } from "./feedback.ts";
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.get("/api/health", (c) => c.json({ ok: true }));
+
+/** The request's body as text, or null once it passes `max` bytes. */
+async function bodyUpTo(request: Request, max: number): Promise<string | null> {
+  if (Number(request.headers.get("content-length") ?? 0) > max) return null;
+  if (request.body === null) return "";
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of request.body) {
+    size += chunk.byteLength;
+    if (size > max) return null;
+    chunks.push(chunk);
+  }
+  return new TextDecoder().decode(await new Blob(chunks).arrayBuffer());
+}
+
+// Feedback from the app's info sheet: saved, then mailed to the maintainer.
+// The message is safe once it is saved, so a mail that fails doesn't fail
+// the request: the row stays, with `emailed` still 0.
+app.post("/api/feedback", async (c) => {
+  if (
+    !c.req.header("content-type")?.toLowerCase().startsWith("application/json")
+  ) {
+    return c.json({ error: "unsupported_media_type" }, 415);
+  }
+  const text = await bodyUpTo(c.req.raw, MAX_BODY_BYTES);
+  if (text === null) return c.json({ error: "too_large" }, 413);
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return c.json({ error: "invalid", field: "body" }, 400);
+  }
+  const now = Date.now();
+  const parsed = parseFeedback(body, now);
+  if (!parsed.ok) return c.json({ error: "invalid", field: parsed.field }, 400);
+
+  const country = (c.req.raw.cf?.country as string | undefined) ?? null;
+  const row: StoredFeedback = {
+    ...parsed.feedback,
+    id: crypto.randomUUID(),
+    receivedAt: new Date(now).toISOString(),
+    country: country && /^[A-Z]{2}$/.test(country) ? country : null,
+  };
+  await saveFeedback(c.env.DB, row);
+
+  if (c.env.FEEDBACK_TO) {
+    try {
+      const fromSender =
+        row.senderId === null
+          ? 0
+          : await countFromSender(c.env.DB, row.senderId);
+      await sendEmail(
+        c.env.EMAIL,
+        feedbackMail(row, c.env.FEEDBACK_TO, fromSender),
+      );
+      await markEmailed(c.env.DB, row.id);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "feedback_mail_failed",
+          id: row.id,
+          error: String(error),
+        }),
+      );
+    }
+  } else {
+    console.warn(
+      JSON.stringify({
+        event: "feedback_mail_skipped",
+        id: row.id,
+        reason: "FEEDBACK_TO is not set",
+      }),
+    );
+  }
+
+  return c.json({ id: row.id, receivedAt: row.receivedAt }, 201);
+});
 
 // An unknown API path answers in JSON, like the rest of the API.
 app.all("/api/*", (c) => c.json({ error: "not_found" }, 404));
