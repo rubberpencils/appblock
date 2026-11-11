@@ -25,19 +25,30 @@ These exist only in the account. If one is changed, change it here too.
 Custom DNS): `cartman.ns.cloudflare.com`, `lindsey.ns.cloudflare.com`.
 Setting them back to "Namecheap BasicDNS" takes the domain off Cloudflare.
 
-**DNS records** (DNS → Records). Nothing is added by hand except `www`:
+**DNS records** (DNS → Records). Two are added by hand, `www` and `_dmarc`:
 
 | Record | Made by |
 |---|---|
 | `trymoly.com` → the Worker | The deploy (`routes` in `wrangler.jsonc`) |
 | `www` A `192.0.2.1`, proxied | By hand, for the redirect below. The address is a reserved placeholder: the redirect answers before anything is sent to it. |
 | MX ×3, SPF and DKIM TXT | Email Routing. Locked: it manages them. |
+| `_dmarc` TXT `v=DMARC1; p=reject; sp=reject` | By hand. See Email, below. |
 
 Don't add a record for `trymoly.com` itself by hand: the deploy owns that
 name, and in CI it replaces whatever record is there.
 
 **Email** (Email → Email Routing): on, forwarding `support@trymoly.com` to
 the maintainer's inbox. Receiving only.
+
+The `_dmarc` record tells mail providers to reject any message that claims
+to come from `trymoly.com` (or a subdomain) without proof. The domain sends
+no mail, so every such message is a forgery, such as a fake "install this
+update" sent to testers. Forwarding isn't affected: forwarded mail keeps its
+own sender. It also means nothing may send as `@trymoly.com` unsigned, the
+maintainer's own inbox included: a reply to support mail goes out from the
+maintainer's address, not from `support@trymoly.com`. When the server starts
+sending mail, publish that service's DKIM record for the domain first, check
+one message arrives with `dmarc=pass`, and leave the policy at `reject`.
 
 **`www` redirect** (Rules → Redirect Rules): "Redirect from WWW to root",
 `https://www.*` → `https://${1}`, 301, query string preserved.
@@ -121,9 +132,9 @@ deploy from a laptop: deploys go through CI, which runs the checks first.
 
 1. Add `trymoly.com` to a Cloudflare account (free plan), delete every DNS
    record the import finds, and set the nameservers it gives at Namecheap.
-2. Once the domain is active: Email Routing, Web Analytics, the `www`
-   redirect (accept its offer to create the `www` record) and Always Use
-   HTTPS, as above.
+2. Once the domain is active: Email Routing, the `_dmarc` record, Web
+   Analytics, the `www` redirect (accept its offer to create the `www`
+   record) and Always Use HTTPS, as above.
 3. Create the API token (the permissions above), create the `production`
    environment, limited to `main`, and set both secrets in it.
 4. Run the `Publish site` workflow. The first deploy creates the Worker, the
