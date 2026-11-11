@@ -9,9 +9,9 @@
 // the tests under /e2e/: detection rules as the server would publish them,
 // signed with a key made for this run (the real key never leaves the
 // maintainer's machine), and that key's public half.
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { generateKeyPairSync, type KeyObject, sign } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startBackend } from "./backend.ts";
@@ -45,6 +45,7 @@ function rules(updated: Date, ids: string[]): string {
  *   old       names a view the player no longer has (the app redesigned)
  *   new       the fix: names the player's view
  *   tampered  the fix's signature on rules someone changed
+ *   stranger  newer than the fix, and properly signed, by someone else's key
  * All are newer than anything the app ships with.
  */
 export function fixtures(now: Date = new Date()): {
@@ -60,6 +61,8 @@ export function fixtures(now: Date = new Date()): {
   ]);
   const fix = rules(new Date(now.getTime() - hour), [PLAYER]);
   const changed = rules(now, ["something_else_entirely"]);
+  const strangers = rules(new Date(now.getTime() + hour), ["a_strangers_rule"]);
+  const stranger = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   // Signed once: a second signature over the same rules would differ.
   const fixFile = signed(fix, privateKey);
   const fixSignature = JSON.parse(fixFile).sig as string;
@@ -73,6 +76,10 @@ export function fixtures(now: Date = new Date()): {
       "e2e/rules/old/v1/rules.signed.json": signed(old, privateKey),
       "e2e/rules/new/v1/rules.signed.json": fixFile,
       "e2e/rules/tampered/v1/rules.signed.json": `${JSON.stringify({ rules: changed, sig: fixSignature }, null, 2)}\n`,
+      "e2e/rules/stranger/v1/rules.signed.json": signed(
+        strangers,
+        stranger.privateKey,
+      ),
     },
   };
 }
@@ -102,7 +109,9 @@ if (
   console.log(
     `The backend is up at ${backend.url} (its log: ${backend.logFile}).`,
   );
-  const done = spawnSync(command[0], command.slice(1), {
+  // Not spawnSync: this process has to keep running while the command
+  // does, to go on writing down what the server prints.
+  const child = spawn(command[0], command.slice(1), {
     stdio: "inherit",
     env: {
       ...process.env,
@@ -110,6 +119,20 @@ if (
       MOLY_BACKEND_PORT: String(backend.port),
     },
   });
+  const status = await new Promise<number>((done) => {
+    child.on("error", (error) => {
+      console.error(String(error));
+      done(127);
+    });
+    child.on("exit", (code) => done(code ?? 1));
+  });
+  // What the server printed is worth seeing when the command failed.
+  if (status !== 0) {
+    console.error(`\n--- the backend's log (the command exited ${status}) ---`);
+    console.error(
+      readFileSync(backend.logFile, "utf8").split("\n").slice(-60).join("\n"),
+    );
+  }
   backend.stop();
-  process.exit(done.status ?? 1);
+  process.exit(status);
 }

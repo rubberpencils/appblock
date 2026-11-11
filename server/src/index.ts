@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import {
   countFromSender,
+  countUnmailed,
   markEmailed,
   type StoredFeedback,
   saveFeedback,
@@ -33,7 +34,8 @@ async function bodyUpTo(request: Request, max: number): Promise<string | null> {
 
 // Feedback from the app's info sheet: saved, then mailed to the maintainer.
 // The message is safe once it is saved, so a mail that fails doesn't fail
-// the request: the row stays, with `emailed` still 0.
+// the request: the row stays, with `emailed` still 0, and the next mail
+// that does go out says how many didn't.
 app.post("/api/feedback", async (c) => {
   if (
     !c.req.header("content-type")?.toLowerCase().startsWith("application/json")
@@ -55,22 +57,41 @@ app.post("/api/feedback", async (c) => {
   const country = (c.req.raw.cf?.country as string | undefined) ?? null;
   const row: StoredFeedback = {
     ...parsed.feedback,
-    id: crypto.randomUUID(),
+    id: parsed.feedback.id ?? crypto.randomUUID(),
     receivedAt: new Date(now).toISOString(),
     country: country && /^[A-Z]{2}$/.test(country) ? country : null,
   };
-  await saveFeedback(c.env.DB, row);
+  // Already here: the app is trying again after an answer that was lost on
+  // the way. It has been saved and mailed (or not) once; say so again.
+  if (!(await saveFeedback(c.env.DB, row))) {
+    return c.json({ id: row.id, receivedAt: row.receivedAt }, 201);
+  }
 
   if (c.env.FEEDBACK_TO) {
     try {
-      const fromSender =
-        row.senderId === null
-          ? 0
-          : await countFromSender(c.env.DB, row.senderId);
-      await sendEmail(
-        c.env.EMAIL,
-        feedbackMail(row, c.env.FEEDBACK_TO, fromSender),
-      );
+      const mail = feedbackMail(row, c.env.FEEDBACK_TO, {
+        fromSender:
+          row.senderId === null
+            ? 0
+            : await countFromSender(c.env.DB, row.senderId),
+        unmailed: await countUnmailed(c.env.DB, row.id),
+      });
+      try {
+        await sendEmail(c.env.EMAIL, mail);
+      } catch (error) {
+        // The reply address is the one header a sender chooses, and the
+        // likeliest thing to be refused. It is in the text too: without it
+        // the maintainer still hears.
+        if (!mail.replyTo) throw error;
+        console.warn(
+          JSON.stringify({
+            event: "feedback_mail_retried_without_reply_to",
+            id: row.id,
+            error: String(error),
+          }),
+        );
+        await sendEmail(c.env.EMAIL, { ...mail, replyTo: undefined });
+      }
       await markEmailed(c.env.DB, row.id);
     } catch (error) {
       console.error(

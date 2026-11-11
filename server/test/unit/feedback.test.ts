@@ -11,6 +11,7 @@ const day = 24 * 60 * 60 * 1000;
 
 /** Everything the app sends, as it sends it. */
 const full = {
+  id: "D253906D-8ED8-441B-8CC8-855B535DA257",
   message: "The wall didn't come up on Instagram today.",
   contact: "tester@example.com",
   senderId: "3F9A2B6C-1D4E-4F5A-8B7C-9D0E1F2A3B4C",
@@ -36,8 +37,9 @@ function refusedField(body: unknown): string | null {
 }
 
 describe("a message with everything the app sends", () => {
-  it("is taken as sent, times as ISO text and the sender id in lower case", () => {
+  it("is taken as sent, times as ISO text and the ids in lower case", () => {
     expect(parsed(full)).toEqual({
+      id: "d253906d-8ed8-441b-8cc8-855b535da257",
       kind: "feedback",
       message: "The wall didn't come up on Instagram today.",
       contact: "tester@example.com",
@@ -61,6 +63,7 @@ describe("a message with everything the app sends", () => {
 describe("the message", () => {
   it("is all that's needed: the rest is empty", () => {
     expect(parsed({ message: "hi" })).toEqual({
+      id: null,
       kind: "feedback",
       message: "hi",
       contact: null,
@@ -123,12 +126,38 @@ describe("the kind of message", () => {
   });
 });
 
-describe("the rest, each refused by name when wrong", () => {
+describe("the reply address", () => {
   it.each([
-    ["contact", "not an address"],
-    ["contact", "two@@example.com"],
-    ["contact", `${"a".repeat(250)}@example.com`],
-    ["contact", 5],
+    "tester@example.com",
+    "a.b+c@mail.example.co.in",
+    "josé@exämple.com",
+  ])("%s could be one", (contact) => {
+    expect(parsed({ ...full, contact }).contact).toBe(contact);
+  });
+
+  it.each([
+    "not an address",
+    "two@@example.com",
+    "no-dot@example",
+    `${"a".repeat(250)}@example.com`,
+    // What means something else in a mail header.
+    '"x"<y@z.de',
+    "a,b@c.de",
+    "a;b@c.de",
+    "a b@c.de",
+    "a\u00a0b@c.de",
+    5,
+  ])("%j isn't, and the message is refused for it", (contact) => {
+    expect(refusedField({ ...full, contact })).toBe("contact");
+  });
+});
+
+describe("what the app says about itself", () => {
+  // A phone's clock years off, an app version nobody expected: the message
+  // still matters. What can't be read is left out, and the rest kept.
+  it.each([
+    ["id", "not-a-uuid"],
+    ["id", 7],
     ["senderId", "not-a-uuid"],
     ["senderId", "3f9a2b6c1d4e4f5a8b7c9d0e1f2a3b4c"],
     ["appVersion", "v".repeat(41)],
@@ -137,16 +166,27 @@ describe("the rest, each refused by name when wrong", () => {
     ["appBuild", "20"],
     ["androidVersion", 14],
     ["androidSdk", -1],
+    ["androidSdk", 10_000],
     ["device", "d".repeat(121)],
     ["installedAt", "yesterday"],
-    ["installedAt", Date.UTC(2019, 11, 31)],
-    ["updatedAt", now + 2 * day],
+    ["installedAt", 0],
+    ["installedAt", Date.UTC(2015, 5, 1)],
+    ["updatedAt", now + 3 * day],
     ["diagnostics", "accessibility"],
     ["diagnostics", [1, 2]],
     ["diagnostics", { blob: "x".repeat(4000) }],
-  ])("%s: %j", (field, value) => {
-    expect(refusedField({ ...full, [field]: value })).toBe(field);
-  });
+  ])(
+    "%s that makes no sense (%j) is left out, and the message taken",
+    (field, value) => {
+      const taken = parsed({ ...full, [field]: value });
+      expect(taken[field as keyof Feedback]).toBeNull();
+      expect(taken.message).toBe(full.message);
+      expect({ ...taken, [field]: undefined }).toEqual({
+        ...parsed(full),
+        [field]: undefined,
+      });
+    },
+  );
 
   it("an empty or absent one is simply empty", () => {
     const body = { ...full, contact: "  ", device: null, diagnostics: null };

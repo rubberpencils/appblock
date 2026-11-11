@@ -62,6 +62,20 @@ class FeedbackTest {
     }
 
     @Test
+    fun `the address check is the server's, case for case`() {
+        // server/test/unit/feedback.test.ts has the same two lists: an address the
+        // app lets through and the server refuses would be a message that never sends.
+        for (typed in listOf("tester@example.com", "a.b+c@mail.example.co.in", "josé@exämple.com"))
+            assertEquals(typed, Storage.Contact(typed, true), Storage.feedbackContact(typed))
+        for (typed in listOf("not an address", "two@@example.com", "no-dot@example", "\"x\"<y@z.de", "a,b@c.de",
+            "a;b@c.de", "a b@c.de", "a\u00a0b@c.de"))
+            assertEquals(typed, Storage.Contact(null, false), Storage.feedbackContact(typed))
+        val server = File("../server/test/unit/feedback.test.ts").readText()
+        for (shared in listOf("josé@exämple.com", "a,b@c.de", "a;b@c.de", "no-dot@example"))
+            assertTrue("the server's tests don't have $shared", server.contains(shared))
+    }
+
+    @Test
     fun `a support request needs an address, as it can only be answered by mail`() {
         val support = Storage.FeedbackKind.SUPPORT
         assertEquals(Storage.Contact(null, false), Storage.feedbackContact("", support))
@@ -165,6 +179,18 @@ class FeedbackTest {
     }
 
     @Test
+    fun `a past message that can't be read costs only itself`() {
+        val stored = """[
+            {"id":"a","at":3,"message":"First","kind":"feedback"},
+            {"id":"b","at":2,"message":"No kind at all"},
+            {"id":"c","at":1,"message":"A kind from the future","kind":"praise"},
+            "not even an object",
+            {"id":"d","at":0,"message":"Last","kind":"support","contact":"me@example.com"}
+        ]"""
+        assertEquals(listOf("First", "Last"), Storage.sentFeedbackFromJson(stored).map { it.message })
+    }
+
+    @Test
     fun `a past message remembers its kind and where a reply was asked for`() {
         val back = Storage.sentFeedbackFromJson(Storage.sentFeedbackToJson(listOf(
             Storage.SentFeedback("a", 2, "Help", Storage.FeedbackKind.SUPPORT, "me@example.com"),
@@ -212,10 +238,12 @@ class FeedbackTest {
 
     @Test
     fun `the body has the names the server reads`() {
-        val body = JSONObject(Storage.feedbackBody(Storage.FeedbackKind.FEEDBACK, "It stopped blocking.",
+        val body = JSONObject(Storage.feedbackBody("0b6f6f0e-5b1a-4c7e-9a43-2f1d5e7c9b10",
+            Storage.FeedbackKind.FEEDBACK, "It stopped blocking.",
             "me@example.com", "3f9a2b6c-1d4e-4f5a-8b7c-9d0e1f2a3b4c", about))
+        assertEquals("0b6f6f0e-5b1a-4c7e-9a43-2f1d5e7c9b10", body.getString("id"))
         assertEquals("feedback", body.getString("kind"))
-        assertEquals(setOf("kind", "message", "contact", "senderId", "appVersion", "appBuild", "androidVersion",
+        assertEquals(setOf("id", "kind", "message", "contact", "senderId", "appVersion", "appBuild", "androidVersion",
             "androidSdk", "device", "installedAt", "updatedAt", "diagnostics"), body.keySet())
         assertEquals("It stopped blocking.", body.getString("message"))
         assertEquals("me@example.com", body.getString("contact"))
@@ -238,7 +266,7 @@ class FeedbackTest {
     fun `the server's own checks read the same names`() {
         // server/src/feedback.ts is what takes this body apart.
         val server = File("../server/src/feedback.ts").readText()
-        val body = JSONObject(Storage.feedbackBody(Storage.FeedbackKind.SUPPORT, "m", "me@example.com", "id", about))
+        val body = JSONObject(Storage.feedbackBody("mid", Storage.FeedbackKind.SUPPORT, "m", "me@example.com", "id", about))
         for (name in body.keySet()) assertTrue("the server doesn't read \"$name\"", "input.$name" in server)
     }
 
@@ -247,7 +275,7 @@ class FeedbackTest {
         // server/src/feedback.ts takes exactly these two.
         val server = File("../server/src/feedback.ts").readText()
         for (kind in Storage.FeedbackKind.entries) {
-            assertEquals(kind.wire, JSONObject(Storage.feedbackBody(kind, "m", "me@example.com", "id", about)).getString("kind"))
+            assertEquals(kind.wire, JSONObject(Storage.feedbackBody("mid", kind, "m", "me@example.com", "id", about)).getString("kind"))
             assertTrue("the server doesn't know \"${kind.wire}\"", "\"${kind.wire}\"" in server)
         }
         assertEquals(listOf("Feedback", "Support"), Storage.FeedbackKind.entries.map { it.label })
@@ -255,13 +283,13 @@ class FeedbackTest {
 
     @Test
     fun `with no reply address there is no contact at all`() {
-        assertFalse(JSONObject(Storage.feedbackBody(Storage.FeedbackKind.FEEDBACK, "m", null, "id", about)).has("contact"))
+        assertFalse(JSONObject(Storage.feedbackBody("mid", Storage.FeedbackKind.FEEDBACK, "m", null, "id", about)).has("contact"))
     }
 
     @Test
     fun `nothing in the body names an app the user limits`() {
         // What Feedback.about reports is counts and switches; the body is only that and the message.
-        val body = Storage.feedbackBody(Storage.FeedbackKind.FEEDBACK, "m", null, "id", about)
+        val body = Storage.feedbackBody("mid", Storage.FeedbackKind.FEEDBACK, "m", null, "id", about)
         assertFalse(body.contains("com."))
     }
 
@@ -278,6 +306,13 @@ class FeedbackTest {
     @Test
     fun `a 201 with an id is sent`() {
         assertEquals("d253906d", Storage.feedbackId(201, """{"id":"d253906d","receivedAt":"2026-11-11T12:00:00Z"}"""))
+    }
+
+    @Test
+    fun `a no from the server won't change on a second try, anything else might`() {
+        for (status in listOf(400, 404, 413, 415, 429)) assertTrue("$status", Storage.feedbackRefused(status))
+        // No answer at all, or the server having a bad moment.
+        for (status in listOf(0, 500, 502, 503, 301, 201)) assertFalse("$status", Storage.feedbackRefused(status))
     }
 
     @Test
@@ -310,6 +345,9 @@ class FeedbackTest {
         for (host in listOf("trymoly.com", "192.168.1.5", "localhost.example.com", "evil.localhost", ""))
             for (build in listOf("debug", "local", "release"))
                 assertFalse("$build talking HTTP to $host", Storage.plainHttpAllowed("http", host, build))
+        // Only the two builds named: one added later is a release until it says otherwise.
+        for (build in listOf("staging", "beta", "Release", ""))
+            assertFalse("$build talking HTTP", Storage.plainHttpAllowed("http", "localhost", build))
         // HTTPS isn't "plain HTTP allowed": it takes the other, checked, path.
         assertFalse(Storage.plainHttpAllowed("https", "localhost", "debug"))
     }

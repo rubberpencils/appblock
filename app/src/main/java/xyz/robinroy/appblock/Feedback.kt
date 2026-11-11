@@ -24,8 +24,26 @@ object Feedback {
     /** How a send ended. */
     sealed class Outcome {
         data class Sent(val id: String) : Outcome()
-        object Failed : Outcome()
+        /** Not sent. `refused`: the server said no, and would again. */
+        data class Failed(val refused: Boolean) : Outcome()
     }
+
+    /**
+     * What is being written, kept while the app runs: turning the phone, or
+     * the sheet closing by accident, doesn't cost anyone their words. `id`
+     * is the message's own, made for its first try and kept for the next.
+     */
+    class Draft(
+        var kind: Storage.FeedbackKind = Storage.FeedbackKind.FEEDBACK,
+        var message: String = "", var contact: String = "",
+        var id: String = java.util.UUID.randomUUID().toString(),
+    )
+
+    @Volatile var draft = Draft()
+        private set
+
+    /** The message was sent, or thrown away: the next starts empty, with an id of its own. */
+    fun newDraft() { draft = Draft() }
 
     /**
      * Sends a body to the server: its status and its answer. The e2e tests
@@ -44,6 +62,7 @@ object Feedback {
     fun resetForTests() {
         post = ::postToServer
         apiBase = BuildConfig.API_BASE
+        newDraft()
     }
 
     /** When Android says the app was first installed and last updated on this phone. */
@@ -92,26 +111,27 @@ object Feedback {
      * it kept in the past feedback and counted towards the day's limit.
      */
     fun send(
-        ctx: Context, kind: Storage.FeedbackKind, message: String, contact: String?, done: (Outcome) -> Unit
+        ctx: Context, id: String, kind: Storage.FeedbackKind, message: String, contact: String?,
+        done: (Outcome) -> Unit
     ) {
         val app = ctx.applicationContext
         val main = Handler(Looper.getMainLooper())
         thread(name = "feedback") {
             val outcome = try {
-                val body = Storage.feedbackBody(kind, message, contact, Storage.senderId(app), about(app))
+                val body = Storage.feedbackBody(id, kind, message, contact, Storage.senderId(app), about(app))
                 val (status, answer) = post(body)
-                val id = Storage.feedbackId(status, answer)
-                if (id == null) {
+                val taken = Storage.feedbackId(status, answer)
+                if (taken == null) {
                     Log.w(TAG, "not taken: HTTP $status")
-                    Outcome.Failed
+                    Outcome.Failed(Storage.feedbackRefused(status))
                 } else {
                     Storage.addSentFeedback(app,
-                        Storage.SentFeedback(id, System.currentTimeMillis(), message, kind, contact))
-                    Outcome.Sent(id)
+                        Storage.SentFeedback(taken, System.currentTimeMillis(), message, kind, contact))
+                    Outcome.Sent(taken)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "send failed", e)
-                Outcome.Failed
+                Outcome.Failed(refused = false)
             }
             main.post { done(outcome) }
         }

@@ -11,16 +11,22 @@ export interface StoredFeedback extends Feedback {
   country: string | null;
 }
 
+/**
+ * Saves a message. False when one with its id is already there: the app
+ * trying again after an answer that never reached it. Nothing is changed
+ * then.
+ */
 export async function saveFeedback(
   db: D1Database,
   row: StoredFeedback,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const done = await db
     .prepare(
-      `INSERT INTO feedback (id, received_at, kind, message, contact, sender_id, app_version,
-         app_build, android_version, android_sdk, device, installed_at,
-         updated_at, diagnostics, country)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO feedback (id, received_at, kind, message, contact, sender_id,
+         app_version, app_build, android_version, android_sdk, device,
+         installed_at, updated_at, diagnostics, country)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO NOTHING`,
     )
     .bind(
       row.id,
@@ -40,6 +46,7 @@ export async function saveFeedback(
       row.country,
     )
     .run();
+  return done.meta.changes > 0;
 }
 
 /** The maintainer was mailed about this one. */
@@ -50,14 +57,35 @@ export async function markEmailed(db: D1Database, id: string): Promise<void> {
     .run();
 }
 
-/** How many messages this sender has sent, this one included once it is saved. */
+/** Counting stops here: past it the mail says "100+", and a count never reads more rows than this. */
+export const COUNT_UP_TO = 100;
+
+/** How many messages this sender has sent, this one included once it is saved, up to COUNT_UP_TO. */
 export async function countFromSender(
   db: D1Database,
   senderId: string,
 ): Promise<number> {
   const row = await db
-    .prepare("SELECT COUNT(*) AS n FROM feedback WHERE sender_id = ?")
+    .prepare(
+      `SELECT COUNT(*) AS n FROM
+         (SELECT 1 FROM feedback WHERE sender_id = ? LIMIT ${COUNT_UP_TO})`,
+    )
     .bind(senderId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+/** How many messages besides `id` were never mailed to the maintainer, up to COUNT_UP_TO. */
+export async function countUnmailed(
+  db: D1Database,
+  id: string,
+): Promise<number> {
+  const row = await db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM
+         (SELECT 1 FROM feedback WHERE emailed = 0 AND id != ? LIMIT ${COUNT_UP_TO})`,
+    )
+    .bind(id)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }

@@ -153,12 +153,71 @@ describe("a message from the app", () => {
     expect(JSON.stringify(saved)).not.toContain("203.0.113.7");
   });
 
-  it("gets a different id each time, the same message twice included", async () => {
+  it("with no id of its own gets a new one each time, the same words twice included", async () => {
     await exports.default.fetch(post(full));
     await exports.default.fetch(post(full));
     const saved = await rows();
     expect(saved).toHaveLength(2);
     expect(saved[0].id).not.toBe(saved[1].id);
+  });
+
+  it("is kept even when what the app says about itself makes no sense", async () => {
+    const odd = {
+      ...full,
+      updatedAt: Date.now() + 3 * 24 * 60 * 60 * 1000,
+      androidSdk: 10_000,
+      senderId: "abc",
+    };
+    const response = await exports.default.fetch(post(odd));
+    expect(response.status).toBe(201);
+    expect((await rows())[0]).toMatchObject({
+      message: full.message,
+      updated_at: null,
+      android_sdk: null,
+      sender_id: null,
+      device: "OnePlus CPH2401",
+    });
+  });
+});
+
+describe("a message the app tries again (the answer to its first try was lost)", () => {
+  const id = "0b6f6f0e-5b1a-4c7e-9a43-2f1d5e7c9b10";
+
+  it("is one message: saved once, mailed once, and answered the same both times", async () => {
+    const sent: Parameters<Mailer["send"]>[0][] = [];
+    const mailer: Mailer = {
+      send: async (message) => {
+        sent.push(message);
+      },
+    };
+    const first = await withMailer(post({ ...full, id }), mailer);
+    const again = await withMailer(post({ ...full, id }), mailer);
+    expect(first.status).toBe(201);
+    expect(again.status).toBe(201);
+    expect((await first.json<{ id: string }>()).id).toBe(id);
+    expect((await again.json<{ id: string }>()).id).toBe(id);
+    const saved = await rows();
+    expect(saved).toHaveLength(1);
+    expect(saved[0].id).toBe(id);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("can't be used to change what was first sent", async () => {
+    await exports.default.fetch(post({ ...full, id }));
+    await exports.default.fetch(
+      post({
+        ...full,
+        id,
+        message: "Something else",
+        contact: "other@example.com",
+      }),
+    );
+    const saved = await rows();
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      message: full.message,
+      contact: full.contact,
+    });
   });
 });
 
@@ -208,6 +267,50 @@ describe("the mail about it", () => {
     expect(saved[0].emailed).toBe(0);
   });
 
+  it("refused for its reply address is sent again without one: the maintainer still hears", async () => {
+    const tries: Parameters<Mailer["send"]>[0][] = [];
+    const picky: Mailer = {
+      send: async (message) => {
+        tries.push(message);
+        if (message.replyTo) throw new Error("E_HEADER_VALUE_INVALID");
+      },
+    };
+    const response = await withMailer(
+      post({ ...full, contact: "josé@exämple.com" }),
+      picky,
+    );
+    expect(response.status).toBe(201);
+    expect(tries).toHaveLength(2);
+    expect(tries[0].replyTo).toBe("josé@exämple.com");
+    expect(tries[1].replyTo).toBeUndefined();
+    // Where to answer is in the text all the same.
+    expect(tries[1].text).toContain("From: josé@exämple.com");
+    expect((await rows())[0].emailed).toBe(1);
+  });
+
+  it("says how many earlier messages were never mailed", async () => {
+    const sent: Parameters<Mailer["send"]>[0][] = [];
+    let up = false;
+    const flaky: Mailer = {
+      send: async (message) => {
+        if (!up) throw new Error("mail is down");
+        sent.push(message);
+      },
+    };
+    await withMailer(post({ message: "Lost one." }), flaky);
+    await withMailer(post({ message: "Lost two." }), flaky);
+    up = true;
+    await withMailer(post({ message: "Heard." }), flaky);
+    await withMailer(post({ message: "Heard again." }), flaky);
+    expect(sent).toHaveLength(2);
+    expect(sent[0].text).toContain("Never mailed: 2 earlier messages.");
+    // Still two: they stay unmailed until someone looks.
+    expect(sent[1].text).toContain("Never mailed: 2 earlier messages.");
+    expect((await rows()).map((row) => row.emailed).sort()).toEqual([
+      0, 0, 1, 1,
+    ]);
+  });
+
   it("isn't tried with nowhere to send it: saved, not marked as mailed", async () => {
     let tried = false;
     const mailer: Mailer = {
@@ -235,7 +338,6 @@ describe("what is refused, and saves nothing", () => {
       { ...full, contact: "nope" },
       "contact",
     ],
-    ["a sender id that isn't one", { ...full, senderId: "abc" }, "senderId"],
     ["a kind that isn't one", { ...full, kind: "urgent" }, "kind"],
     [
       "support with no address to answer",

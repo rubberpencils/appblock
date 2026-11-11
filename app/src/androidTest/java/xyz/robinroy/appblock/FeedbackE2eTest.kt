@@ -55,12 +55,16 @@ class FeedbackE2eTest {
     /** A send held back until this is let go, so "Sending…" can be seen. */
     private var held: CountDownLatch? = null
 
-    /** The server takes whatever is sent, giving each message the next id. */
+    /** The answer the real server gives a message it took: its id, back. */
+    private fun taken(body: String) =
+        201 to """{"id":"${JSONObject(body).getString("id")}","receivedAt":"2026-11-11T12:00:00.000Z"}"""
+
+    /** The server takes whatever is sent. */
     private fun serverTakesIt() {
         Feedback.post = { body ->
             held?.await(20, TimeUnit.SECONDS)
             synchronized(posted) { posted += JSONObject(body) }
-            201 to """{"id":"feedback-${posted.size}","receivedAt":"2026-11-11T12:00:00.000Z"}"""
+            taken(body)
         }
     }
 
@@ -132,8 +136,12 @@ class FeedbackE2eTest {
         // The app that is limited is counted, never named.
         assertFalse(body.toString(), body.toString().contains(CLOCK))
 
+        // Each message has an id of its own, made on the phone.
+        assertTrue(body.getString("id"), Regex("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}").matches(body.getString("id")))
+        assertFalse(body.getString("id") == body.getString("senderId"))
+
         // Kept on the phone, and there to read again.
-        assertEquals(listOf("feedback-1" to message), past().map { it.id to it.message })
+        assertEquals(listOf(body.getString("id") to message), past().map { it.id to it.message })
         waitFor(text("Your past messages (1)")).click()
         waitFor(text("Your past messages"))
         assertTrue(appears(text(message)))
@@ -262,6 +270,8 @@ class FeedbackE2eTest {
 
         assertEquals(2, posted.size)
         assertEquals(posted[0].getString("senderId"), posted[1].getString("senderId"))
+        // Two messages, two ids.
+        assertFalse(posted[0].getString("id") == posted[1].getString("id"))
         // No address given: none sent.
         assertFalse(posted[1].has("contact"))
         assertEquals(listOf("Two.", "One."), past().sortedByDescending { it.sentAt }.map { it.message })
@@ -271,10 +281,12 @@ class FeedbackE2eTest {
     fun whenItCantBeSent_whatWasWrittenStays_andTryingAgainSendsIt() {
         freshState(mapOf(CLOCK to Rule(allowMin = 5, windowMin = 120)))
         var online = false
+        val tried = mutableListOf<JSONObject>()
         Feedback.post = { body ->
+            synchronized(tried) { tried += JSONObject(body) }
             if (!online) throw java.io.IOException("no network")
             synchronized(posted) { posted += JSONObject(body) }
-            201 to """{"id":"feedback-1"}"""
+            taken(body)
         }
         openForm()
         val message = "Written on a train, in a tunnel."
@@ -295,17 +307,76 @@ class FeedbackE2eTest {
         waitFor(text("Sent. Thank you."))
         assertEquals(message, posted.single().getString("message"))
         assertEquals(listOf(message), past().map { it.message })
+        // The second try was the same message, by its id: a server that got
+        // the first after all would not keep two.
+        assertEquals(2, tried.size)
+        assertEquals(tried[0].getString("id"), tried[1].getString("id"))
     }
 
     @Test
-    fun aServerThatRefuses_isAFailedSendToo() {
+    fun aServerHavingABadMoment_isAFailedSendToo() {
         freshState(mapOf(CLOCK to Rule(allowMin = 5, windowMin = 120)))
         Feedback.post = { _ -> 500 to "<html>Something went wrong</html>" }
         openForm()
         messageBox().text = "Hello?"
         sendButton().click()
-        waitFor(textContains("Couldn't send it"))
+        waitFor(textContains("Check your connection and try again"))
         assertEquals(emptyList<Storage.SentFeedback>(), past())
+    }
+
+    @Test
+    fun aServerThatSaysNo_sendsYouToEmail_notToYourConnection() {
+        freshState(mapOf(CLOCK to Rule(allowMin = 5, windowMin = 120)))
+        Feedback.post = { _ -> 400 to """{"error":"invalid","field":"message"}""" }
+        openForm()
+        messageBox().text = "Something the server won't take."
+        sendButton().click()
+        // Trying again wouldn't help, and saying "check your connection" would be a lie.
+        waitFor(textContains("Couldn't send it from here. Email it to support@trymoly.com instead"))
+        assertEquals(null, device.findObject(textContains("Check your connection")))
+        assertNotNull(device.findObject(text("Or email support@trymoly.com")))
+        assertEquals("Something the server won't take.", messageBox().text)
+        assertEquals(emptyList<Storage.SentFeedback>(), past())
+        shot("5c-server-said-no")
+    }
+
+    @Test
+    fun whatIsBeingWritten_isStillThere_afterTheSheetClosesAndTheScreenTurns() {
+        freshState(mapOf(CLOCK to Rule(allowMin = 5, windowMin = 120)))
+        serverTakesIt()
+        openForm()
+        waitFor(text("Support")).click()
+        messageBox().text = "Half a thought"
+        contactBox().text = "tester@example.com"
+
+        // Closed (a swipe too far, the back button twice), and opened again.
+        device.pressBack(); device.pressBack()
+        assertTrue(device.wait(Until.gone(By.clazz(EditText::class.java)), E2e.WAIT))
+        openForm()
+        assertEquals("Half a thought", messageBox().text)
+        assertEquals("tester@example.com", contactBox().text)
+        assertTrue(waitFor(text("Support")).isSelected)
+
+        // The phone turned: the screen is built again, and the sheet with it goes.
+        try {
+            device.setOrientationLandscape()
+            device.setOrientationNatural()
+            device.waitForIdle()
+            if (device.findObject(By.clazz(EditText::class.java)) == null) openForm()
+            assertEquals("Half a thought", messageBox().text)
+        } finally {
+            device.setOrientationNatural()
+            device.unfreezeRotation()
+        }
+
+        // Sent, it is gone from the form: the next message starts empty.
+        sendButton().click()
+        waitFor(text("Sent. Thank you."))
+        waitFor(text("Done")).click()
+        scrollTo(text("Help & feedback")).click()
+        waitFor(By.clazz(EditText::class.java))
+        assertEquals("", messageBox().text.orEmpty().replace("Your message", ""))
+        assertTrue(waitFor(text("Feedback")).isSelected)
     }
 
     @Test

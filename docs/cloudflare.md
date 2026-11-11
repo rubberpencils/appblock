@@ -39,17 +39,21 @@ Don't add a record for `trymoly.com` itself by hand: the deploy owns that
 name, and in CI it replaces whatever record is there.
 
 **Email** (Email → Email Routing): on, forwarding `support@trymoly.com` to
-the maintainer's inbox. Receiving only.
+the maintainer's inbox. The one sender is the Worker: it mails feedback
+from the app, as `feedback@trymoly.com`, to the `FEEDBACK_TO` address
+below. On this plan a Worker can only mail the account's verified
+destination addresses.
 
 The `_dmarc` record tells mail providers to reject any message that claims
-to come from `trymoly.com` (or a subdomain) without proof. The domain sends
-no mail, so every such message is a forgery, such as a fake "install this
-update" sent to testers. Forwarding isn't affected: forwarded mail keeps its
-own sender. It also means nothing may send as `@trymoly.com` unsigned, the
-maintainer's own inbox included: a reply to support mail goes out from the
-maintainer's address, not from `support@trymoly.com`. When the server starts
-sending mail, publish that service's DKIM record for the domain first, check
-one message arrives with `dmarc=pass`, and leave the policy at `reject`.
+to come from `trymoly.com` (or a subdomain) without proof, such as a fake
+"install this update" sent to testers. Forwarding isn't affected: forwarded
+mail keeps its own sender. The Worker's own mail has to pass too: if
+feedback mail stops arriving, look first at the `dmarc=` result in one
+that did (Gmail: Show original). Nothing else may send as `@trymoly.com` unsigned,
+the maintainer's own inbox included: a reply to support mail goes out from
+the maintainer's address. Before another service sends mail for the
+domain, publish its DKIM record, check one message arrives with
+`dmarc=pass`, and leave the policy at `reject`.
 
 DMARC Management (Email → DMARC Management) is on: it added the `rua`
 address to the record, so mail providers send their daily reports to
@@ -67,7 +71,9 @@ support requests from the app. To look: the dashboard's console, or
 and Secrets): `FEEDBACK_TO`, the address feedback is mailed to. It must be
 a verified destination address of Email Routing: mail from a Worker is
 free to those, and goes nowhere else on this plan. A deploy refuses to go
-out while it is missing.
+out while it is missing. A message is saved before it is mailed, so a mail
+that fails loses nothing: the next one that arrives says how many didn't,
+and they are `SELECT * FROM feedback WHERE emailed = 0`.
 
 **`www` redirect** (Rules → Redirect Rules): "Redirect from WWW to root",
 `https://www.*` → `https://${1}`, 301, query string preserved.
@@ -126,7 +132,7 @@ switch Pages off or remove the CNAME.
 
 Building, testing and running the server locally needs no Cloudflare
 account. Access is only for looking at or changing the live one (logs, DNS,
-later the database). Ask the maintainer for an invite (Manage account →
+the database). Ask the maintainer for an invite (Manage account →
 Members); the "Workers Platform Admin" role covers a developer's needs.
 
 With access, two CLIs, each signed in with your own login:
@@ -161,7 +167,9 @@ deploy from a laptop: deploys go through CI, which runs the checks first.
 4. Create the API token (the permissions above), create the `production`
    environment, limited to `main`, and set both secrets in it.
 5. Run the `Publish site` workflow. The first deploy creates the Worker, the
-   DNS record for `trymoly.com` and its certificate. It stops, asking for
-   the `FEEDBACK_TO` secret: set it
-   (`cf workers secrets update FEEDBACK_TO --worker moly --type secret_text --text <address>`)
-   and run the workflow again.
+   DNS record for `trymoly.com` and its certificate. A Worker that doesn't
+   exist yet can't be given its secret in advance, and the deploy refuses
+   without it: for that one deploy, take `secrets` out of
+   `server/wrangler.jsonc`, then set the secret
+   (`cf workers secrets update FEEDBACK_TO --worker moly --type secret_text --text <address>`),
+   put `secrets` back and run the workflow again.

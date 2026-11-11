@@ -9,3 +9,5 @@ worker-configuration.d.ts
 .dev.vars
 # Written by `pnpm dev:mail` (scripts/dev-real-mail.ts)
 wrangler.real-mail.jsonc
+# Written by `vitest --reporter=json`
+.vitest/

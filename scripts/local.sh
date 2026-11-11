@@ -17,6 +17,13 @@
 cd "$(dirname "$0")/.."
 . scripts/env.sh
 
+# Signed like a release, or it couldn't install over the real app.
+if [ ! -f keystore.properties ]; then
+  echo "scripts/local.sh needs the release keystore (keystore.properties): ask the maintainer." >&2
+  echo "Without it, try a change on the emulator: scripts/e2e.sh, or docs/local-dev.md." >&2
+  exit 1
+fi
+
 ./gradlew testDebugUnitTest assembleLocal
 cp app/build/outputs/apk/local/app-local.apk moly-local.apk
 "$ADB" reverse tcp:8787 tcp:8787

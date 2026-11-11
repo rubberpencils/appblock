@@ -1,6 +1,6 @@
 // Mail from the Worker. Everything that sends goes through sendEmail, so
 // what does the sending (Cloudflare's binding today) can change in one place.
-import type { StoredFeedback } from "./db.ts";
+import { COUNT_UP_TO, type StoredFeedback } from "./db.ts";
 
 export interface Mail {
   from: { email: string; name: string };
@@ -71,9 +71,17 @@ function setupLine(diagnostics: string): string {
 export function feedbackMail(
   row: StoredFeedback,
   to: string,
-  /** How many messages this sender has sent, this one included; 0 when not known. */
-  fromSender = 0,
+  counts: {
+    /** How many messages this sender has sent, this one included; 0 when not known. */
+    fromSender?: number;
+    /** How many earlier messages were never mailed. */
+    unmailed?: number;
+  } = {},
 ): Mail {
+  const fromSender = counts.fromSender ?? 0;
+  const unmailed = counts.unmailed ?? 0;
+  const upTo = (n: number) =>
+    n >= COUNT_UP_TO ? `${COUNT_UP_TO}+` : String(n);
   const received = Date.parse(row.receivedAt);
   const installedDays =
     row.installedAt === null
@@ -111,7 +119,7 @@ export function feedbackMail(
     `From: ${row.contact ?? "no address left"}`,
     row.senderId === null
       ? null
-      : `Sender: ${row.senderId}${fromSender > 0 ? ` (message ${fromSender} from them)` : ""}`,
+      : `Sender: ${row.senderId}${fromSender > 0 ? ` (message ${upTo(fromSender)} from them)` : ""}`,
     app.length > 0 ? `App: ${app.join(" · ")}` : null,
     row.installedAt === null
       ? null
@@ -121,6 +129,10 @@ export function feedbackMail(
     row.diagnostics === null ? null : `Setup: ${setupLine(row.diagnostics)}`,
     `Received: ${row.receivedAt}`,
     `ID: ${row.id}`,
+    // A mail can fail while its message is saved: this is how that shows.
+    unmailed === 0
+      ? null
+      : `\nNever mailed: ${upTo(unmailed)} earlier ${unmailed === 1 ? "message" : "messages"}. In the database: SELECT * FROM feedback WHERE emailed = 0.`,
   ].filter((line) => line !== null);
 
   return {

@@ -45,7 +45,9 @@ ANDROID_SERIAL=emulator-5554 scripts/local.sh   # on the emulator
 
 It builds the "local" build (the release build, except that it talks to
 `http://localhost:8787`; its version reads `-local`), installs it over the
-app that is there, keeping its data, and links the device to your machine:
+app that is there, keeping its data, and links the device to your machine.
+It is signed like a release, so it needs the release keystore
+(`keystore.properties`), which only the maintainer's machine has:
 
 ```sh
 adb reverse tcp:8787 tcp:8787

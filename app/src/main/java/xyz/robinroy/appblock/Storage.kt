@@ -210,11 +210,12 @@ object Storage {
     /**
      * Whether a connection may be plain HTTP: only to this machine (the
      * device's own localhost, or 10.0.2.2 from an emulator), where a
-     * developer's server is (docs/local-dev.md), and never in a release
-     * build. Everything else is HTTPS or nothing.
+     * developer's server is (docs/local-dev.md), and only in the two builds
+     * that are never released. Everything else is HTTPS or nothing.
      */
     fun plainHttpAllowed(protocol: String, host: String, buildType: String): Boolean =
-        protocol == "http" && buildType != "release" && host in setOf("localhost", "127.0.0.1", "10.0.2.2")
+        protocol == "http" && buildType in setOf("debug", "local") &&
+            host in setOf("localhost", "127.0.0.1", "10.0.2.2")
 
     /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
     private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
@@ -1659,12 +1660,20 @@ object Storage {
      */
     data class Contact(val address: String?, val ok: Boolean)
 
+    // The server's check (server/src/feedback.ts), to the letter: none of the
+    // characters that mean something else in a mail header, and no space of
+    // any kind. The spaces are spelled out (the ones JavaScript counts,
+    // and the control characters): a regex's own "any space" means one thing
+    // on Android and another on a desktop JVM, where the unit tests run.
+    private val ADDRESS = ("[^\\u0000-\\u0020\\u007f\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029" +
+        "\\u202f\\u205f\\u3000\\ufeff@<>()\\[\\]\",;:\\\\]").let { c -> Regex("$c+@$c+\\.$c+") }
+
     fun feedbackContact(typed: String, kind: FeedbackKind = FeedbackKind.FEEDBACK): Contact {
         val t = typed.trim()
         return when {
             // Support can only be answered by mail: no address, nothing to send.
             t.isEmpty() -> Contact(null, kind != FeedbackKind.SUPPORT)
-            t.length <= 254 && Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+").matches(t) -> Contact(t, true)
+            t.length <= 254 && ADDRESS.matches(t) -> Contact(t, true)
             else -> Contact(null, false)
         }
     }
@@ -1708,12 +1717,15 @@ object Storage {
 
     fun sentFeedbackFromJson(json: String?): List<SentFeedback> = try {
         val arr = JSONArray(json ?: "[]")
-        (0 until arr.length()).map { arr.getJSONObject(it) }
-            .map { o ->
+        // Each on its own: one that can't be read costs only itself.
+        (0 until arr.length()).mapNotNull { i ->
+            try {
+                val o = arr.getJSONObject(i)
                 SentFeedback(o.getString("id"), o.getLong("at"), o.getString("message"),
                     FeedbackKind.entries.first { it.wire == o.getString("kind") },
                     if (o.has("contact")) o.getString("contact") else null)
-            }
+            } catch (e: Exception) { null }
+        }
     } catch (e: Exception) { emptyList() }
 
     /** When the app was first installed and last updated, in ms. */
@@ -1754,9 +1766,12 @@ object Storage {
 
     /** The body of POST /api/feedback: the names the server reads (server/src/feedback.ts). */
     fun feedbackBody(
-        kind: FeedbackKind, message: String, contact: String?, senderId: String, about: FeedbackAbout
+        id: String, kind: FeedbackKind, message: String, contact: String?, senderId: String, about: FeedbackAbout
     ): String =
         JSONObject().apply {
+            // The message's own id, the same on every try: a second try
+            // after a lost answer isn't a second message.
+            put("id", id)
             put("kind", kind.wire)
             put("message", message)
             if (contact != null) put("contact", contact)
@@ -1771,10 +1786,16 @@ object Storage {
             put("diagnostics", JSONObject().apply { for ((k, v) in about.diagnostics) put(k, v) })
         }.toString()
 
-    /** The id the server gave a message it took (its 201's body), or null for anything else. */
+    /** The id of a message the server took (its 201's body), or null for anything else. */
     fun feedbackId(status: Int, body: String?): String? = if (status != 201) null else try {
         JSONObject(body ?: "").getString("id").ifEmpty { null }
     } catch (e: Exception) { null }
+
+    /**
+     * Whether the server itself said no (a 4xx): trying again won't help,
+     * where a dropped connection or a server having a bad moment may.
+     */
+    fun feedbackRefused(status: Int): Boolean = status in 400..499
 
     // Who is writing and since when, in its own small file ("identity.xml"),
     // read at every start; the past feedback, which can be megabytes, in

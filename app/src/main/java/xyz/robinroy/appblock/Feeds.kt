@@ -87,8 +87,8 @@ object Feeds {
         val now = System.currentTimeMillis()
         if (fetching || !Storage.shouldFetchRules(p.getLong("lastAttempt", 0), now,
                 p.getLong("version:$pkg", -1), versionCode)) return
-        p.edit().putLong("lastAttempt", now).putLong("version:$pkg", versionCode).apply()
         fetching = true
+        p.edit().putLong("lastAttempt", now).putLong("version:$pkg", versionCode).apply()
         val app = ctx.applicationContext
         thread(name = "feed-rules") {
             try { fetch(app) } catch (e: Exception) { Log.w(TAG, "fetch failed", e) } finally { fetching = false }

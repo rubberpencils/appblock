@@ -38,6 +38,13 @@ describe("the rules served to the app's full-stack tests", () => {
     expect(signatureHolds(open("tampered"))).toBe(false);
   });
 
+  it("the stranger's file is newer than the fix and truly signed, but not with the run's key", () => {
+    const strangers = open("stranger");
+    expect(JSON.parse(strangers.rules).updated).toBe("2026-11-11T13:00:30Z");
+    expect(signatureHolds(strangers)).toBe(false);
+    expect(strangers.sig).not.toBe(open("new").sig);
+  });
+
   it("the fix names the player's view; the old rules name one it no longer has", () => {
     const fixture = "xyz.robinroy.appblock.fixture";
     expect(JSON.parse(open("new").rules).feeds[fixture][0].ids).toEqual([

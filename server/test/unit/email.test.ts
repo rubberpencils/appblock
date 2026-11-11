@@ -22,7 +22,7 @@ const row: StoredFeedback = {
 };
 
 describe("the mail for a message with everything", () => {
-  const mail = feedbackMail(row, "maintainer@example.com", 3);
+  const mail = feedbackMail(row, "maintainer@example.com", { fromSender: 3 });
 
   it("goes to the maintainer, from the feedback address", () => {
     expect(mail.to).toBe("maintainer@example.com");
@@ -112,6 +112,38 @@ describe("a support request", () => {
   });
 });
 
+describe("messages that were never mailed", () => {
+  it("are counted at the foot of the next mail that is, with where to find them", () => {
+    const mail = feedbackMail(row, "m@example.com", { unmailed: 3 });
+    expect(
+      mail.text.endsWith(
+        `ID: ${row.id}\n\nNever mailed: 3 earlier messages. In the database: SELECT * FROM feedback WHERE emailed = 0.\n`,
+      ),
+    ).toBe(true);
+    expect(feedbackMail(row, "m@example.com", { unmailed: 1 }).text).toContain(
+      "Never mailed: 1 earlier message.",
+    );
+  });
+
+  it("with none, nothing is said", () => {
+    expect(
+      feedbackMail(row, "m@example.com", { unmailed: 0 }).text,
+    ).not.toContain("Never mailed");
+    expect(feedbackMail(row, "m@example.com").text).not.toContain(
+      "Never mailed",
+    );
+  });
+
+  it("counting stops at a hundred, and says so", () => {
+    const mail = feedbackMail(row, "m@example.com", {
+      fromSender: 100,
+      unmailed: 100,
+    });
+    expect(mail.text).toContain("(message 100+ from them)");
+    expect(mail.text).toContain("Never mailed: 100+ earlier messages.");
+  });
+});
+
 describe("small things", () => {
   it("one day is a day", () => {
     const yesterday = { ...row, installedAt: "2026-11-10T11:00:00.000Z" };
@@ -150,7 +182,10 @@ describe("sendEmail", () => {
         sent.push(message);
       },
     };
-    await sendEmail(mailer, feedbackMail(row, "m@example.com", 1));
+    await sendEmail(
+      mailer,
+      feedbackMail(row, "m@example.com", { fromSender: 1 }),
+    );
     await sendEmail(
       mailer,
       feedbackMail({ ...row, contact: null }, "m@example.com"),

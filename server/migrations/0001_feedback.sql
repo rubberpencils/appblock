@@ -2,7 +2,7 @@
 -- row a message. What gets searched or sorted by has its own column; the rest of
 -- what the app reports about its setup is JSON in `diagnostics`.
 CREATE TABLE feedback (
-  id              TEXT PRIMARY KEY,   -- made by the server, a UUID
+  id              TEXT PRIMARY KEY,   -- a UUID: the app's for the message, so a retry isn't a second row
   received_at     TEXT NOT NULL,      -- UTC, ISO 8601
   kind            TEXT NOT NULL CHECK (kind IN ('feedback', 'support')),   -- support wants an answer
   message         TEXT NOT NULL,
@@ -21,3 +21,5 @@ CREATE TABLE feedback (
 );
 CREATE INDEX feedback_received_at ON feedback (received_at);
 CREATE INDEX feedback_sender_id ON feedback (sender_id);
+-- The few that were never mailed, found without reading the rest.
+CREATE INDEX feedback_unmailed ON feedback (emailed) WHERE emailed = 0;

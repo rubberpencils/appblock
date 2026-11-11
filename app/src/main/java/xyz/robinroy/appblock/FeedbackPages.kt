@@ -134,7 +134,12 @@ object FeedbackPages {
 
             fun showForm() {
                 clear()
-                var kind = opened
+                // What was being written is still here (Feedback.draft): a turn of
+                // the phone or a sheet closed by accident loses nothing. The
+                // shortcut asks for Support; an untouched draft follows it.
+                val draft = Feedback.draft
+                if (draft.message.isEmpty() && draft.contact.isEmpty()) draft.kind = opened
+                var kind = draft.kind
                 val intro = Ui.muted(host, "", 15f).apply { setLineSpacing(0f, 1.45f) }
                 val message = box(host, "").apply {
                     inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
@@ -168,6 +173,7 @@ object FeedbackPages {
                 // What the page asks for follows the kind; what is already written stays.
                 fun ask(now: Storage.FeedbackKind) {
                     kind = now
+                    draft.kind = now
                     if (now == Storage.FeedbackKind.SUPPORT) {
                         intro.text = "Stuck, or something not working as it should? Say what's happening and " +
                             "we'll write back."
@@ -208,25 +214,39 @@ object FeedbackPages {
                     host.getSystemService(InputMethodManager::class.java)
                         .hideSoftInputFromWindow(message.windowToken, 0)
                     val sentAs = kind
-                    Feedback.send(host, sentAs, text, reply.address) { outcome ->
+                    Feedback.send(host, draft.id, sentAs, text, reply.address) { outcome ->
+                        // Sent: the next message starts empty, whether or not this sheet is still up.
+                        if (outcome is Feedback.Outcome.Sent && Feedback.draft === draft) Feedback.newDraft()
                         // The sheet may have been closed while it went.
                         if (!sheet.isShowing) return@send
                         when (outcome) {
                             is Feedback.Outcome.Sent -> showSent(sentAs, reply.address)
-                            Feedback.Outcome.Failed -> {
+                            is Feedback.Outcome.Failed -> {
                                 send.label.text = "Try again"
                                 sending(false)
-                                say("Couldn't send it. Check your connection and try again: what you wrote is " +
-                                    "still here.", offerEmail = true)
+                                // The server saying no won't change on a second try: mail is the way.
+                                say(if (outcome.refused) "Couldn't send it from here. Email it to " +
+                                    "${SupportActivity.EMAIL} instead: what you wrote is still here."
+                                else "Couldn't send it. Check your connection and try again: what you wrote " +
+                                    "is still here.", offerEmail = true)
                             }
                         }
                     }
-                }.apply { isEnabled = false }
+                }
 
+                message.setText(draft.message)
+                contact.setText(draft.contact)
+                send.isEnabled = Storage.feedbackMessage(draft.message) != null
                 message.addTextChangedListener(object : TextWatcher {
                     override fun afterTextChanged(s: Editable) {
+                        draft.message = s.toString()
                         send.isEnabled = Storage.feedbackMessage(s.toString()) != null
                     }
+                    override fun beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
+                })
+                contact.addTextChangedListener(object : TextWatcher {
+                    override fun afterTextChanged(s: Editable) { draft.contact = s.toString() }
                     override fun beforeTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
                     override fun onTextChanged(s: CharSequence, a: Int, b: Int, c: Int) {}
                 })
@@ -236,8 +256,9 @@ object FeedbackPages {
                 addView(intro, Ui.lp().apply { topMargin = Ui.dp(host, 14) })
                 addView(message, Ui.lp().apply { topMargin = Ui.dp(host, 14) })
                 addView(contact, Ui.lp().apply { topMargin = Ui.dp(host, 10) })
-                addView(Ui.muted(host, "Goes with it: Moly's version, your phone's model and Android version, " +
-                    "and whether Moly's permissions are on. Never which apps you limit.", 13f).apply {
+                addView(Ui.muted(host, "Goes with it: Moly's version, your phone's model, Android version and " +
+                    "language, and how Moly is set up: which permissions are on, how many apps you limit. " +
+                    "Never which apps they are.", 13f).apply {
                     setLineSpacing(0f, 1.4f)
                 }, Ui.lp().apply { topMargin = Ui.dp(host, 12) })
                 addView(problem, Ui.lp().apply { topMargin = Ui.dp(host, 14) })

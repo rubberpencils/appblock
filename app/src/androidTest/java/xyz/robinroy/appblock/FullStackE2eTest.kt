@@ -237,8 +237,10 @@ class FullStackE2eTest {
             "the same rules again" to rulesAt("new"),
             "rules someone changed under a real signature" to rulesAt("tampered"),
             "older rules" to rulesAt("old"),
-            // The real rules, signed with the maintainer's key: not the key this app trusts.
-            "rules signed with another key" to "$backend/v1/rules.signed.json",
+            // Newer than what the phone has, and properly signed: by a key this app doesn't trust.
+            "newer rules signed with someone else's key" to rulesAt("stranger"),
+            // The real rules: the maintainer's key (not the run's), and older besides.
+            "the real rules, under a key this run doesn't trust" to "$backend/v1/rules.signed.json",
             "a file that isn't there" to "$backend/e2e/rules/nope/v1/rules.signed.json",
             "a server out of reach" to "$nowhere/v1/rules.signed.json",
         )

@@ -80,7 +80,8 @@ Requirements:
   `adb` lives at `<sdk.dir>/platform-tools/adb` and may not be on `PATH`.
 - **Node and pnpm**, for the server: the Node version in
   `server/.node-version`, then `pnpm install` in `server/`. Also needed to
-  commit a change to `web/` or `rules/` (the hook below).
+  commit a change to `web/` or `rules/` (the hook below), and by
+  `scripts/e2e.sh`, which starts the server for its tests.
 
 First time in a clone, before the first commit (agents: do this yourself,
 don't wait to be asked; check with `git config core.hooksPath`):

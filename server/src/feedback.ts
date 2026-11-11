@@ -15,6 +15,12 @@ const MAX_DIAGNOSTICS_CHARS = 4000;
 export type Kind = "feedback" | "support";
 
 export interface Feedback {
+  /**
+   * The message's own id, made up by the app before its first try, so that
+   * a second try of the same message isn't a second message. Null from an
+   * app that sends none.
+   */
+  id: string | null;
   /** Support is someone stuck, who needs an answer; feedback is everything else. */
   kind: Kind;
   message: string;
@@ -61,6 +67,22 @@ function wholeNumber(
   return value >= min && value <= max ? value : undefined;
 }
 
+// An address worth replying to: something@something.something, with none of
+// the characters that mean something else in a mail header. (The app
+// checks the same: Storage.feedbackContact.)
+const ADDRESS =
+  /^[^\s@<>()[\]",;:\\]+@[^\s@<>()[\]",;:\\]+\.[^\s@<>()[\]",;:\\]+$/;
+
+/** A UUID in lower case, or null for anything else. */
+function uuid(value: unknown): string | null {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+    ? value.toLowerCase()
+    : null;
+}
+
 /** A time the app reports (ms since 1970) as ISO text; not before 2020, not after `now`. */
 function pastTime(value: unknown, now: number): string | null | undefined {
   if (value === undefined || value === null) return null;
@@ -70,8 +92,9 @@ function pastTime(value: unknown, now: number): string | null | undefined {
 }
 
 /**
- * Checks what the app sent. Anything it doesn't know is ignored; anything
- * it knows and finds wrong is refused, naming the field.
+ * Checks what the app sent. What can't be worked with is refused, naming
+ * the field: no message, a kind or a reply address that isn't one. Anything
+ * else it doesn't know or can't read is left out.
  */
 export function parseFeedback(body: unknown, now: number): Parsed {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -91,57 +114,41 @@ export function parseFeedback(body: unknown, now: number): Parsed {
   }
 
   const contact = shortText(input.contact, MAX_CONTACT_CHARS);
-  // One @ with something either side and a dot after it: enough to reply to.
-  if (
-    contact === undefined ||
-    (contact !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact))
-  ) {
+  if (contact === undefined || (contact !== null && !ADDRESS.test(contact))) {
     return bad("contact");
   }
   // Support can only be answered by mail.
   if (kind === "support" && contact === null) return bad("contact");
 
-  const senderId = shortText(input.senderId, 36);
-  if (
-    senderId === undefined ||
-    (senderId !== null &&
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        senderId,
-      ))
-  ) {
-    return bad("senderId");
-  }
-
-  const appVersion = shortText(input.appVersion, 40);
-  if (appVersion === undefined) return bad("appVersion");
-  const appBuild = wholeNumber(input.appBuild, 1, 1_000_000_000);
-  if (appBuild === undefined) return bad("appBuild");
-  const androidVersion = shortText(input.androidVersion, 20);
-  if (androidVersion === undefined) return bad("androidVersion");
-  const androidSdk = wholeNumber(input.androidSdk, 1, 1000);
-  if (androidSdk === undefined) return bad("androidSdk");
-  const device = shortText(input.device, 120);
-  if (device === undefined) return bad("device");
-  const installedAt = pastTime(input.installedAt, now);
-  if (installedAt === undefined) return bad("installedAt");
-  const updatedAt = pastTime(input.updatedAt, now);
-  if (updatedAt === undefined) return bad("updatedAt");
+  // The rest is what the app says about itself. The message matters more
+  // than any of it: something there that makes no sense (a phone whose
+  // clock was years off when Moly was installed) is left out, not refused.
+  const or = <T>(value: T | null | undefined): T | null => value ?? null;
+  const id = uuid(input.id);
+  const senderId = uuid(input.senderId);
+  const appVersion = or(shortText(input.appVersion, 40));
+  const appBuild = or(wholeNumber(input.appBuild, 1, 1_000_000_000));
+  const androidVersion = or(shortText(input.androidVersion, 20));
+  const androidSdk = or(wholeNumber(input.androidSdk, 1, 1000));
+  const device = or(shortText(input.device, 120));
+  const installedAt = or(pastTime(input.installedAt, now));
+  const updatedAt = or(pastTime(input.updatedAt, now));
 
   let diagnostics: string | null = null;
-  if (input.diagnostics !== undefined && input.diagnostics !== null) {
-    const d = input.diagnostics;
-    if (typeof d !== "object" || Array.isArray(d)) return bad("diagnostics");
-    diagnostics = JSON.stringify(d);
-    if (diagnostics.length > MAX_DIAGNOSTICS_CHARS) return bad("diagnostics");
+  const d = input.diagnostics;
+  if (typeof d === "object" && d !== null && !Array.isArray(d)) {
+    const text = JSON.stringify(d);
+    if (text.length <= MAX_DIAGNOSTICS_CHARS) diagnostics = text;
   }
 
   return {
     ok: true,
     feedback: {
+      id,
       kind,
       message,
       contact,
-      senderId: senderId === null ? null : senderId.toLowerCase(),
+      senderId,
       appVersion,
       appBuild,
       androidVersion,
