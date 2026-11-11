@@ -18,7 +18,7 @@ import java.time.ZoneId
 import java.util.concurrent.Executors
 
 /**
- * AppBlock's own screen-time history: every app session, kept for good in
+ * Moly's own screen-time history: every app session, kept for good in
  * a database on the phone (Storage.HISTORY_DB, left out of Auto Backup).
  * Android keeps its usage events for a week or so; a sync copies the new
  * ones in, as sessions (Storage.sessionsFrom), merged with what's stored

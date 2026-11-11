@@ -7,5 +7,5 @@ cd "$(dirname "$0")/.."
 . scripts/env.sh
 
 ./gradlew testDebugUnitTest assembleRelease
-cp app/build/outputs/apk/release/app-release.apk appblock.apk
-"$ADB" install -r appblock.apk
+cp app/build/outputs/apk/release/app-release.apk moly.apk
+"$ADB" install -r moly.apk

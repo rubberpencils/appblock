@@ -1,7 +1,7 @@
 #!/bin/sh -e
 # Test on an emulator instead of the phone: boots an Android 14 emulator
 # (creating it on first run), installs the current debug build on it (the
-# build the e2e tests use), and switches on AppBlock's settings so the home
+# build the e2e tests use), and switches on Moly's settings so the home
 # list is live straight away.
 #
 #   scripts/emulator.sh            headless; drive it with adb
@@ -52,4 +52,4 @@ APK=app/build/outputs/apk/debug/app-debug.apk
 "$ADB" shell appops set xyz.robinroy.appblock GET_USAGE_STATS allow
 "$ADB" shell dumpsys deviceidle whitelist +xyz.robinroy.appblock > /dev/null
 "$ADB" shell pm grant xyz.robinroy.appblock android.permission.POST_NOTIFICATIONS
-echo "Ready: AppBlock is installed on $ANDROID_SERIAL."
+echo "Ready: Moly is installed on $ANDROID_SERIAL."

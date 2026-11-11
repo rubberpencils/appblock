@@ -25,7 +25,7 @@ import java.util.regex.Pattern
  * of the usage log so a test can start "5 minutes into" a budget instead of
  * waiting it out.
  *
- * The tests run inside AppBlock's own process, so they read and write its
+ * The tests run inside Moly's own process, so they read and write its
  * storage directly; everything on screen goes through UI Automator, which
  * also sees other apps and the block wall drawn over them.
  */
@@ -125,7 +125,7 @@ object E2e {
 
     /**
      * Strict mode on with this way out, as if chosen on its setup screen and
-     * then AppBlock made a device admin (through adb here; the system's
+     * then Moly made a device admin (through adb here; the system's
      * Activate page is driven in StrictE2eTest.turningOn_goesThroughTheDeviceAdminPage).
      */
     fun strictOn(way: Storage.WayOut, cooldownMin: Int = 15, pass: Rule? = null) {
@@ -134,13 +134,114 @@ object E2e {
         check(eventually { Storage.loadStrict(ctx).on }) { "strict mode didn't go on" }
     }
 
+    // ---- the device's own state: its name, its saved Wi-Fi networks, its language ----
+    //
+    // Strict mode reads the system's Settings pages, so some tests need the
+    // phone itself to say something there. Whatever a test changes with
+    // these, it puts back in an E2e.Cleanup rule.
+
+    /** Run `block` with the shell's permissions, like adb: writing system settings, saving a Wi-Fi network. */
+    fun <T> asShell(block: () -> T): T {
+        uiAutomation.adoptShellPermissionIdentity()
+        try { return block() } finally { uiAutomation.dropShellPermissionIdentity() }
+    }
+
+    /** The phone's name, as About phone shows it ("Device name"); null when it was never set. */
+    fun deviceName(): String? = android.provider.Settings.Global.getString(ctx.contentResolver, "device_name")
+
+    /** Name the phone, as the user would on About phone (any text, spaces included); null puts back "never set". */
+    fun setDeviceName(name: String?) {
+        if (name == null) shell("settings delete global device_name")
+        else asShell { android.provider.Settings.Global.putString(ctx.contentResolver, "device_name", name) }
+        check(eventually { deviceName() == name }) { "the device name didn't change to $name" }
+    }
+
+    private val wifi get() = ctx.getSystemService(android.net.wifi.WifiManager::class.java)
+
+    /**
+     * Save an open Wi-Fi network called `ssid`, as if the user had once
+     * joined it: Settings lists it under Saved networks, in range or not,
+     * Wi-Fi on or off. False where the phone won't have it (no Wi-Fi).
+     */
+    @Suppress("DEPRECATION")   // the one way to save a network without joining it
+    fun saveWifiNetwork(ssid: String): Boolean = try {
+        asShell {
+            val config = android.net.wifi.WifiConfiguration().apply {
+                SSID = "\"$ssid\""
+                allowedKeyManagement.set(android.net.wifi.WifiConfiguration.KeyMgmt.NONE)
+            }
+            wifi.addNetwork(config) >= 0
+        }
+    } catch (e: Exception) {
+        Log.w("E2e", "couldn't save the Wi-Fi network $ssid: $e")
+        false
+    }
+
+    /** Forget every saved Wi-Fi network called `ssid`. */
+    @Suppress("DEPRECATION")
+    fun forgetWifiNetwork(ssid: String) {
+        try {
+            asShell {
+                wifi.configuredNetworks.filter { it.SSID == "\"$ssid\"" }.forEach { wifi.removeNetwork(it.networkId) }
+            }
+        } catch (e: Exception) { Log.w("E2e", "couldn't forget the Wi-Fi network $ssid: $e") }
+    }
+
+    /** The phone's languages, in the user's order ("en-US", "de-DE,en-US"). */
+    fun languages(): String = ctx.resources.configuration.locales.toLanguageTags()
+
+    /**
+     * Switch the phone's language, as Settings > System > Languages does,
+     * and wait until this process has heard. False where it can't be done
+     * from a test (it goes through the system's own LocalePicker, which
+     * isn't in the SDK).
+     */
+    fun setLanguages(tags: String): Boolean = try {
+        asShell {
+            Class.forName("com.android.internal.app.LocalePicker")
+                .getMethod("updateLocales", android.os.LocaleList::class.java)
+                .invoke(null, android.os.LocaleList.forLanguageTags(tags))
+        }
+        eventually { languages() == tags }
+    } catch (e: Exception) {
+        Log.w("E2e", "couldn't switch the language to $tags: $e")
+        false
+    }
+
+    /**
+     * What the blocker itself can read in `pkg`'s windows: each window's
+     * title, then its texts. Not UI Automator's view of them: the blocker
+     * is shown less of some screens than UI Automator is (on Android 14,
+     * Settings' Device admin apps list reaches it without its rows).
+     */
+    fun blockerReads(pkg: String): List<Pair<String?, List<String>>> {
+        val out = mutableListOf<Pair<String?, List<String>>>()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            for (w in BlockerService.instance?.windows.orEmpty()) {
+                val root = try { w.root } catch (e: Exception) { null } ?: continue
+                if (root.packageName?.toString() != pkg) continue
+                val texts = mutableListOf<String>()
+                val stack = ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>().apply { add(root) }
+                var seen = 0
+                while (stack.isNotEmpty() && seen++ < 3000) {
+                    val node = stack.removeLast()
+                    node.text?.let { texts += it.toString() }
+                    node.contentDescription?.let { texts += it.toString() }
+                    for (i in 0 until node.childCount) try { node.getChild(i)?.let(stack::add) } catch (e: Exception) {}
+                }
+                out += w.title?.toString() to texts
+            }
+        }
+        return out
+    }
+
     /** Record that `pkg` was used from `startAgo` to `endAgo` before now. */
     fun seedUsage(pkg: String, startAgo: Long, endAgo: Long, windowMin: Int) {
         val now = System.currentTimeMillis()
         Storage.addUsage(ctx, pkg, now - startAgo, now - endAgo, windowMin)
     }
 
-    /** AppBlock's home screen, freshly built from storage. */
+    /** Moly's home screen, freshly built from storage. */
     fun openHome() {
         ctx.startActivity(Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
@@ -233,6 +334,20 @@ object E2e {
         check(eventually {
             device.findObject(By.pkg(pkg))?.let { windowBounds(it).width() <= width + 1 } ?: false
         }) { "$pkg's pop-up didn't resize" }
+    }
+
+    /**
+     * Close `pkg`'s task, so its next page starts a new one. A task keeps
+     * the intent it was first started for, whatever page it shows now, and
+     * Android answers that same intent again by bringing the task forward
+     * as it is, opening nothing.
+     */
+    fun closeTask(pkg: String) {
+        check(eventually {
+            val id = taskIdOrNull(pkg)
+            if (id != null) shell("am stack remove $id")
+            id == null
+        }) { "$pkg's task wasn't closed" }
     }
 
     /** The task `pkg` runs in. */

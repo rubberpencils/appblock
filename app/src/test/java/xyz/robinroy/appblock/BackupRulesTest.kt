@@ -9,7 +9,7 @@ import org.w3c.dom.Element
 
 /**
  * Auto Backup keeps the rules and usage, and leaves strict mode out (on a
- * new phone AppBlock isn't a device admin, so a restored "on" would be a
+ * new phone Moly isn't a device admin, so a restored "on" would be a
  * lie), the clock's anchor (about this phone's clocks since it booted)
  * and the screen-time history (this phone's only; years of it would pass
  * the 25 MB backup quota, and then nothing gets backed up).

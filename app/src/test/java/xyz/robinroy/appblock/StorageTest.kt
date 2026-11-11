@@ -268,7 +268,7 @@ class StorageTest {
     }
 
     @Test
-    fun `on screen - AppBlock itself, and windows of no app, don't count`() {
+    fun `on screen - Moly itself, and windows of no app, don't count`() {
         assertEquals(mapOf(insta to top), Storage.appsOnScreen(listOf(
             app(insta, top), app(self, bottom),
             Storage.ScreenWindow(Storage.WindowKind.APP, bottom, pkg = null),

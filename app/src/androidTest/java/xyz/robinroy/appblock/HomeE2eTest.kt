@@ -200,7 +200,7 @@ class HomeE2eTest {
         openHome()
 
         waitFor(text("Accessibility")).click()
-        waitFor(text("Turn on AppBlock in Accessibility"))
+        waitFor(text("Turn on Moly in Accessibility"))
         waitFor(textContains("never reads what's on screen"))
         waitFor(text("Agree and continue")).click()
 

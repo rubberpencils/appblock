@@ -28,7 +28,7 @@ object Guides {
             "Opening the app, tapping its notification, or staying in it past the limit " +
                 "covers it with a wall and a button home. In split screen or a pop-up " +
                 "window, the wall covers just that app, so the rest of the screen still " +
-                "works; a pop-up is closed from Recents. AppBlock sees an app the moment it opens, and checks again every " +
+                "works; a pop-up is closed from Recents. Moly sees an app the moment it opens, and checks again every " +
                 "few seconds while it stays on screen."),
         Point(R.drawable.ic_bell, "A countdown before the wall",
             "With notifications on, each limited app on screen gets a countdown of its " +
@@ -113,7 +113,7 @@ object Guides {
                 "had his crew tie him to the mast before the singing started.\n\n" +
                 "Your phone sings too. And you already know knowing isn't enough. You've " +
                 "promised yourself \"just five minutes\" before.\n\n" +
-                "AppBlock is your mast. You decide the rules now, while you're " +
+                "Moly is your mast. You decide the rules now, while you're " +
                 "clear-headed: a few minutes per app, every few hours. Later, when the " +
                 "pull comes, the decision is already made. Not zero access, no daily " +
                 "quota to blow through by 5am. Just enough to check in, never enough to " +
@@ -124,7 +124,7 @@ object Guides {
             "One morning I woke up at 5am and scrolled Instagram, X and YouTube for an " +
                 "hour straight. My entire daily quota, gone before sunrise. That's when " +
                 "it clicked: daily limits fail because one binge empties them, and then " +
-                "you override. AppBlock gives you a small allowance every time window " +
+                "you override. Moly gives you a small allowance every time window " +
                 "instead. Enough to check in, never enough to binge.", 15f).apply {
             setLineSpacing(0f, 1.45f)
         }, Ui.lp().apply { topMargin = Ui.dp(context, 10) })

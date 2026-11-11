@@ -55,7 +55,7 @@ class AppUsageActivity : Activity() {
             setPadding(side, Ui.dp(context, 12), side, Ui.dp(context, 32))
             addView(Ui.iconButton(context, R.drawable.ic_back, "Back") { finish() }, Ui.lp(Ui.dp(context, 44), Ui.dp(context, 44)))
 
-            // The app: icon, name, and what it is to AppBlock.
+            // The app: icon, name, and what it is to Moly.
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL

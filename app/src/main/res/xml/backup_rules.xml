@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Auto Backup on Android 11 and older: everything (the rules, the usage
      log) except strict mode's file and the clock's. On a new phone or a
-     reinstall AppBlock isn't a device admin, so a restored strict mode
+     reinstall Moly isn't a device admin, so a restored strict mode
      would be a lie; it starts off. The clock's anchor (Storage.ClockAnchor)
      is about this phone's clocks since its last boot, and could look like
      a moved clock on another. Android 12+ reads data_extraction_rules.xml

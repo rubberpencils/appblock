@@ -193,7 +193,7 @@ class OnboardingActivity : Activity() {
         return page(
             hero, "The idea", "Tie yourself to the mast.",
             "Odysseus knew the Sirens would win in the moment, so he decided " +
-                "beforehand and had his crew tie him down. AppBlock is your mast: " +
+                "beforehand and had his crew tie him down. Moly is your mast: " +
                 "set the rules while you're clear-headed, and let the phone keep them."
         )
     }
@@ -280,7 +280,7 @@ class OnboardingActivity : Activity() {
         intros[3] = { Ui.pop(hero.getChildAt(0)) }
         return page(
             hero, "The promise", "Private, and easy to leave.",
-            "Next you'll turn on two settings: AppBlock in Accessibility, to see " +
+            "Next you'll turn on two settings: Moly in Accessibility, to see " +
                 "which apps are on screen and draw the wall, and Unrestricted battery " +
                 "so Android doesn't stop the blocker. Usage access (screen-time " +
                 "stats) and notifications (the countdowns) are optional."

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Strict mode's device admin (StrictAdmin) asks for no admin powers at
-     all: being one is what makes Android refuse to uninstall AppBlock. -->
+     all: being one is what makes Android refuse to uninstall Moly. -->
 <device-admin>
     <uses-policies />
 </device-admin>

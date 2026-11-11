@@ -1,10 +1,10 @@
 # AGENTS.md
 
-AppBlock is a small Android app-blocker: an accessibility service watches
+Moly is a small Android app-blocker: an accessibility service watches
 which apps are on screen (the window list, split screen and pop-ups included)
 and draws a block wall over a limited app's window once it exceeds its time
 budget, and over YouTube or Instagram while Shorts or Reels is on screen if
-the user blocks them. Strict mode, if the user turns it on, keeps AppBlock
+the user blocks them. Strict mode, if the user turns it on, keeps Moly
 from being uninstalled or switched off until their chosen way out.
 "Usage access" is optional, for screen-time stats only.
 
@@ -12,6 +12,14 @@ The app is plain Kotlin + Gradle (`app/`), no Android Studio required. The
 repo also holds its website (`web/`), the Shorts and Reels detection rules
 (`rules/`), and the server behind `trymoly.com` that serves both
 (`server/`, a Cloudflare Worker in TypeScript).
+
+Moly was called AppBlock until 2.5.0, and the old name stays in what a
+phone identifies the app by: the app ID and Kotlin package
+(`xyz.robinroy.appblock`), the prefs file (`appblock`) and the broadcast
+actions (`xyz.robinroy.appblock.END_STRICT`). Don't rename those: to
+Android a new app ID is a different app, and a renamed component or prefs
+file loses the user's accessibility grant, device admin or rules on update.
+Everything a person reads says Moly.
 
 ## Tests come with every change
 
@@ -144,7 +152,7 @@ Install via `adb`, not by copying the APK to the phone: adb installs skip
 Google Play Protect's block. One-time phone setup: enable Developer options
 and USB debugging, then accept the USB-debugging prompt.
 
-To verify a change, open AppBlock on the phone. The permission grants and
+To verify a change, open Moly on the phone. The permission grants and
 blocked-app rules survive an `-r` reinstall, and Android brings the blocker's
 accessibility service back after the update, so no re-setup is needed.
 
@@ -187,11 +195,12 @@ for the builds that read it, and `v1` keeps being served to older ones.
   A rule only names view ids to look for in an app whose feed the user
   blocked; a bad one can at worst wall YouTube wrongly, and re-signing the
   old content (a newer `updated`) rolls it back.
-- **The app doesn't fetch from there yet.** Until the rename to Moly
-  (issue #17) changes `Storage.RULES_URL`, builds fetch
-  `https://appblock.robinroy.xyz/v1/rules.signed.json`: the old GitHub
-  Pages site, which nothing publishes to any more. It stays switched on, so
-  builds up to 2.5.0 keep the rules it has, and get no newer ones.
+- **Builds up to 2.5.0 fetch from the old address,**
+  `https://appblock.robinroy.xyz/v1/rules.signed.json`: a GitHub Pages
+  site that nothing publishes to any more. It stays switched on, so those
+  builds keep the rules it has, and get no newer ones. Builds from 2.6.0
+  fetch from `trymoly.com` (`Storage.RULES_URL`; a unit test holds it to
+  the domain in `server/wrangler.jsonc`).
 - **Signing.** After editing `rules/v1/rules.json`, run
   `./gradlew signRules`. It stamps the file's `updated` with the time now
   (UTC; the newer file wins on the phone) and writes
@@ -226,13 +235,13 @@ for the builds that read it, and `v1` keeps being served to older ones.
 
 ## Strict mode
 
-While it's on, AppBlock is a device admin (`StrictAdmin`, no policies in
+While it's on, Moly is a device admin (`StrictAdmin`, no policies in
 `res/xml/strict_admin.xml`), so Android refuses to uninstall it, and the
 blocker walls any screen of the "guarded" system apps (Settings, the package
 installer, the permission controller: `Strict.guardedPackages`) that shows
-AppBlock's name, until that app leaves the screen. Rules only get stricter
+Moly's name, until that app leaves the screen. Rules only get stricter
 (`Storage.loosens`). It ends through the user's way out (plugged in, or a
-cooldown), the admin found off (safe mode, where AppBlock doesn't run), or
+cooldown), the admin found off (safe mode, where Moly doesn't run), or
 adb. The decisions are in `Storage.kt` (`StrictTest`), the moving parts in
 `Strict.kt`, the screens in `StrictActivity`/`StrictSetupActivity`, the
 end-to-end tests in `StrictE2eTest`.
@@ -240,7 +249,7 @@ end-to-end tests in `StrictE2eTest`.
 - Its state is its own prefs file, `strict` (`Storage.STRICT_PREFS`), left
   out of Auto Backup by `backup_rules.xml` and `data_extraction_rules.xml`
   (`BackupRulesTest`). Rename it and those files must follow.
-- While the admin is active nothing can uninstall AppBlock, adb and Gradle
+- While the admin is active nothing can uninstall Moly, adb and Gradle
   included, and `adb shell dpm remove-active-admin` refuses (the app isn't
   test-only). End strict mode first:
 

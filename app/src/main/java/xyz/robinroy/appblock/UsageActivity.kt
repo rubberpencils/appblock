@@ -18,7 +18,7 @@ import java.time.LocalDate
  * Screen time, in full, from the home screen's card: the day's chart and
  * busiest hour (ScreenTimeView), then every app used that day, with a bar
  * against the top one and its time; a search box and sort chips (time or
- * name, tap again to flip) as in the app picker. Apps AppBlock limits say
+ * name, tap again to flip) as in the app picker. Apps Moly limits say
  * so; the apps the user doesn't count come after, under their own heading,
  * and last, on request, the installed apps with no logged use that day.
  * Tapping an app opens its own page (AppUsageActivity).

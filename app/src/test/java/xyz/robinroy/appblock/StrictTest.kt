@@ -466,39 +466,96 @@ class StrictTest {
     // ---- the Settings wall ----
 
     // Texts read off the real pages on the Android 14 emulator.
-    private val appInfo = listOf("AppBlock", "Open", "Uninstall", "Force stop", "Notifications")
-    private val accessibility = listOf("Use AppBlock", "Options", "AppBlock shortcut", "Off")
-    private val stopDialog = listOf("Stop AppBlock?", "Tapping Stop will stop AppBlock.", "Cancel", "Stop")
+    private val appInfo = listOf("Moly", "Open", "Uninstall", "Force stop", "Notifications")
+    private val accessibility = listOf("Use Moly", "Options", "Moly shortcut", "Off")
+    private val stopDialog = listOf("Stop Moly?", "Tapping Stop will stop Moly.", "Cancel", "Stop")
     private val forceStopDialog = listOf("Force stop?", "If you force stop an app, it may misbehave.", "Cancel", "OK")
     private val clearStorageDialog = listOf("Delete app data?",
         "This app’s data, including files and settings, will be permanently deleted from this device", "Cancel", "Delete")
-    private val safetyCard = listOf("Review app with full device access", "AppBlock", "Remove access")
+    private val safetyCard = listOf("Review app with full device access", "Moly", "Remove access")
     private val wifi = listOf("Internet", "AndroidWifi", "Connected", "Network preferences")
 
     @Test
-    fun `screens that name AppBlock`() {
+    fun `screens that name Moly`() {
         for (page in listOf(appInfo, accessibility, stopDialog, safetyCard))
-            assertTrue(page.toString(), Storage.namesApp(page, "AppBlock"))
-        assertTrue(Storage.namesApp(listOf("appblock"), "AppBlock"))
+            assertTrue(page.toString(), Storage.namesApp(page, "Moly"))
+        assertTrue(Storage.namesApp(listOf("moly"), "Moly"))
     }
 
     @Test
     fun `screens that don't`() {
         for (page in listOf(forceStopDialog, clearStorageDialog, wifi, emptyList()))
-            assertFalse(page.toString(), Storage.namesApp(page, "AppBlock"))
+            assertFalse(page.toString(), Storage.namesApp(page, "Moly"))
+    }
+
+    @Test
+    fun `the name counts as a word, not as letters inside another`() {
+        // A neighbour's network, another app, a word in another language.
+        for (text in listOf("Molyneux-5G", "Smolyak's AirPods", "Komoly veszélyek", "Molybdenum", "moly2go", "2moly"))
+            assertFalse(text, Storage.namesApp(listOf(text), "Moly"))
+        // Punctuation, spaces and the ends of the text set it apart.
+        for (text in listOf("Moly", "moly", "MOLY", "Stop Moly?", "Moly's storage", "Use Moly", "\"Moly\"",
+            "Uninstall Moly.", "Moly, 12 MB", "Moly shortcut", "(Moly)", "apps/Moly", "Moly-app"))
+            assertTrue(text, Storage.namesApp(listOf(text), "Moly"))
+        // Settings' own Korean and Japanese: a particle written straight after
+        // the name, in another script, is still the name ("Stop Moly?", "Use Moly").
+        for (text in listOf("Moly을(를) 중지하시겠습니까?", "중지를 탭하면 Moly이(가) 중지됩니다.", "Molyを使用", "Molyのショートカット"))
+            assertTrue(text, Storage.namesApp(listOf(text), "Moly"))
+        // Inside another word once, on its own later in the same text.
+        assertTrue(Storage.namesApp(listOf("Molyneux and Moly"), "Moly"))
+        assertFalse(Storage.namesApp(listOf("Molyneux and Smolyak"), "Moly"))
+    }
+
+    @Test
+    fun `something else called Moly reads the same as the app`() {
+        // No telling a device or a contact named Moly from the app by its text:
+        // off the Wi-Fi and Bluetooth pages, its page is walled too.
+        assertTrue(Storage.namesApp(listOf("Device name", "Holy Moly"), "Moly"))
+    }
+
+    @Test
+    fun `no name, nothing named`() {
+        assertFalse(Storage.namesApp(listOf("Moly", ""), ""))
+    }
+
+    // ---- the Wi-Fi and Bluetooth pages: other people's names ----
+
+    private val connectivity = setOf("Internet", "Wi‑Fi", "Connected devices", "Pair new device", "Bluetooth")
+        .map(Storage::titleKey).toSet()
+
+    @Test
+    fun `the Wi-Fi and Bluetooth pages aren't searched for the name`() {
+        for (title in listOf("Internet", "Connected devices", "Pair new device", "Bluetooth"))
+            assertTrue(title, Storage.isConnectivityPage(title, connectivity))
+    }
+
+    @Test
+    fun `a title matches whatever its case, hyphen or padding`() {
+        // Settings writes Wi‑Fi with a non-breaking hyphen; a maker might not.
+        for (title in listOf("Wi‑Fi", "Wi-Fi", "WI-FI", " wi‐fi "))
+            assertTrue(title, Storage.isConnectivityPage(title, connectivity))
+    }
+
+    @Test
+    fun `every other page is searched, and so is one with no title`() {
+        // Where the app can be switched off, and pages only resembling the Wi-Fi ones.
+        for (title in listOf("App info", "Accessibility", "Settings", "Moly", "Device admin apps",
+            "Wi-Fi data usage", "Internet usage", "Bluetooth permissions", "About phone", "", null))
+            assertFalse("$title", Storage.isConnectivityPage(title, connectivity))
+        assertFalse("no known titles", Storage.isConnectivityPage("Internet", emptySet()))
     }
 
     private val settings = "com.android.settings"
     private val installer = "com.google.android.packageinstaller"
 
     @Test
-    fun `a screen naming AppBlock is walled`() {
+    fun `a screen naming Moly is walled`() {
         assertEquals(setOf(settings), Storage.strictWalls(emptySet(), setOf(settings), setOf(settings)))
     }
 
     @Test
     fun `the wall stays while the app is on screen, whatever it shows`() {
-        // App info, then its Force stop dialog (which doesn't name AppBlock).
+        // App info, then its Force stop dialog (which doesn't name Moly).
         assertEquals(setOf(settings), Storage.strictWalls(setOf(settings), setOf(settings), emptySet()))
     }
 

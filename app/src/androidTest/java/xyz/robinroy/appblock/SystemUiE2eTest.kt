@@ -30,7 +30,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Where AppBlock meets the system: the back gesture, and the status and
+ * Where Moly meets the system: the back gesture, and the status and
  * navigation bars. Both changed under apps targeting Android 15/16 (back no
  * longer reaches onBackPressed; screens draw behind the bars).
  */

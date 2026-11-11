@@ -23,7 +23,7 @@
         tools:ignore="ProtectedPermissions" />
 
     <!-- Fetches the signed rules for spotting Shorts and Reels
-         (rules/v1/rules.signed.json in the repo, from appblock.robinroy.xyz)
+         (rules/v1/rules.signed.json in the repo, from trymoly.com)
          so a redesign is fixed without an app update. A plain download: nothing about the
          phone or its user is sent. -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -44,7 +44,7 @@
             <category android:name="android.intent.category.HOME" />
         </intent>
         <!-- Strict mode: the system apps whose pages could switch the
-             blocker off or uninstall AppBlock (Strict.guardedPackages) -->
+             blocker off or uninstall Moly (Strict.guardedPackages) -->
         <intent>
             <action android:name="android.settings.SETTINGS" />
         </intent>
@@ -81,7 +81,7 @@
          the usage log, onboarding seen) to the user's Google account and
          restores it on a new phone or a reinstall. It's the default, spelled
          out so it stays on. Strict mode's file is left out (backup_rules,
-         data_extraction_rules): on a new phone AppBlock isn't a device admin. -->
+         data_extraction_rules): on a new phone Moly isn't a device admin. -->
     <!-- usesCleartextTraffic: HTTPS only, never plain HTTP. The rules fetch
          is the one connection, and it's to an https:// URL; this makes the
          system refuse plain HTTP anyway (also the default since Android 9,
@@ -91,7 +91,7 @@
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:label="AppBlock"
+        android:label="Moly"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:forceDarkAllowed="false"
@@ -158,12 +158,12 @@
 
         <!-- Strict mode's device admin. It asks for no admin powers
              (strict_admin.xml): being one is what makes Android refuse to
-             uninstall AppBlock. Only the system may send it the admin
+             uninstall Moly. Only the system may send it the admin
              broadcasts (the permission). -->
         <receiver
             android:name=".StrictAdmin"
             android:exported="true"
-            android:label="AppBlock"
+            android:label="Moly"
             android:description="@string/strict_admin_description"
             android:permission="android.permission.BIND_DEVICE_ADMIN">
             <meta-data
@@ -204,7 +204,7 @@
         <service
             android:name=".BlockerService"
             android:exported="true"
-            android:label="AppBlock"
+            android:label="Moly"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

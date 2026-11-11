@@ -155,6 +155,21 @@ class FeedsTest {
         assertEquals("false", app.getAttributeNS("http://schemas.android.com/apk/res/android", "usesCleartextTraffic"))
     }
 
+    @Test
+    fun `the rules are fetched from the domain the server answers on`() {
+        assertEquals("trymoly.com", Storage.RULES_HOST)
+        assertEquals("the host the user is told is the host fetched from",
+            Storage.RULES_HOST, java.net.URI(Storage.RULES_URL).host)
+        // server/wrangler.jsonc gives that domain to the Worker that serves rules/:
+        // a build fetching from anywhere else would get no rules. Read without
+        // its comments, and whatever its spacing.
+        val worker = File("../server/wrangler.jsonc").readLines()
+            .joinToString("\n") { it.replace(Regex("""^\s*//.*$"""), "") }
+        val domains = Regex(""""pattern"\s*:\s*"([^"]+)"""").findAll(worker).map { it.groupValues[1] }.toList()
+        assertTrue("server/wrangler.jsonc answers on $domains, not ${Storage.RULES_HOST}",
+            Storage.RULES_HOST in domains)
+    }
+
     // ---- when to fetch ----
 
     private val hour = 3_600_000L
@@ -215,7 +230,7 @@ class FeedsTest {
     fun `feeds - YouTube's Shorts and Instagram's Reels, each with its switch`() {
         assertEquals(Storage.Feed("Shorts", "Block YouTube Shorts"), Storage.FEEDS[yt])
         assertEquals(Storage.Feed("Reels", "Block Instagram Reels"), Storage.FEEDS[ig])
-        // The apps AppBlock looks inside: adding one is a privacy change, made on purpose.
+        // The apps Moly looks inside: adding one is a privacy change, made on purpose.
         assertEquals(setOf(yt, ig), Storage.FEEDS.keys)
     }
 
