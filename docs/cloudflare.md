@@ -32,7 +32,7 @@ Setting them back to "Namecheap BasicDNS" takes the domain off Cloudflare.
 | `trymoly.com` → the Worker | The deploy (`routes` in `wrangler.jsonc`) |
 | `www` A `192.0.2.1`, proxied | By hand, for the redirect below. The address is a reserved placeholder: the redirect answers before anything is sent to it. |
 | MX ×3, SPF and DKIM TXT | Email Routing. Locked: it manages them. |
-| `_dmarc` TXT `v=DMARC1; p=reject; sp=reject` | By hand. See Email, below. |
+| `_dmarc` TXT `v=DMARC1; p=reject; sp=reject; rua=…` | By hand; the `rua` part by DMARC Management. See Email, below. |
 
 Don't add a record for `trymoly.com` itself by hand: the deploy owns that
 name, and in CI it replaces whatever record is there.
@@ -49,6 +49,12 @@ maintainer's own inbox included: a reply to support mail goes out from the
 maintainer's address, not from `support@trymoly.com`. When the server starts
 sending mail, publish that service's DKIM record for the domain first, check
 one message arrives with `dmarc=pass`, and leave the policy at `reject`.
+
+DMARC Management (Email → DMARC Management) is on: it added the `rua`
+address to the record, so mail providers send their daily reports to
+Cloudflare, and that page shows who is sending mail as `trymoly.com` and
+whether it passed. Anything listed there before the server sends mail is
+someone forging the domain.
 
 **`www` redirect** (Rules → Redirect Rules): "Redirect from WWW to root",
 `https://www.*` → `https://${1}`, 301, query string preserved.
@@ -132,9 +138,9 @@ deploy from a laptop: deploys go through CI, which runs the checks first.
 
 1. Add `trymoly.com` to a Cloudflare account (free plan), delete every DNS
    record the import finds, and set the nameservers it gives at Namecheap.
-2. Once the domain is active: Email Routing, the `_dmarc` record, Web
-   Analytics, the `www` redirect (accept its offer to create the `www`
-   record) and Always Use HTTPS, as above.
+2. Once the domain is active: Email Routing, the `_dmarc` record and DMARC
+   Management, Web Analytics, the `www` redirect (accept its offer to
+   create the `www` record) and Always Use HTTPS, as above.
 3. Create the API token (the permissions above), create the `production`
    environment, limited to `main`, and set both secrets in it.
 4. Run the `Publish site` workflow. The first deploy creates the Worker, the
