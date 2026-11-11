@@ -56,6 +56,19 @@ object E2e {
 
     fun shell(cmd: String): String = device.executeShellCommand(cmd)
 
+    /**
+     * Keeps a picture of the screen as `name`.png, for showing a change's
+     * screens to a person. Only when asked: run the tests with
+     * `-Pandroid.testInstrumentationRunnerArguments.shots=1`, then
+     * `adb pull /sdcard/Download/moly-shots`. A normal run takes none.
+     */
+    fun shot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("shots") == null) return
+        device.waitForIdle()
+        shell("mkdir -p /sdcard/Download/moly-shots")
+        shell("screencap -p /sdcard/Download/moly-shots/$name.png")
+    }
+
     /** For direct window queries; with the flag that leaves the blocker running (see init). */
     val uiAutomation: UiAutomation
         get() = InstrumentationRegistry.getInstrumentation()
@@ -110,6 +123,9 @@ object E2e {
         setBlocker(false)
         InstrumentationRegistry.getInstrumentation().waitForIdleSync()
         ctx.getSharedPreferences("appblock", Context.MODE_PRIVATE).edit().clear().commit()
+        // No past feedback, none sent today, and no fake server left from the last test.
+        ctx.getSharedPreferences(Storage.FEEDBACK_PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+        Feedback.post = { _ -> throw AssertionError("this test sends feedback but didn't say what the server answers") }
         // An empty screen-time history, and no syncing by itself: tests seed what they need.
         History.autoSync = false
         History.resetForTests(ctx)

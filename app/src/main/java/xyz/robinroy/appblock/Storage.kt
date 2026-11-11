@@ -1609,6 +1609,192 @@ object Storage {
         ctx.getSharedPreferences(STRICT_PREFS, Context.MODE_PRIVATE).edit().putString("state", strictToJson(s)).commit()
     }
 
+    // ---- feedback: a message to the maintainer, from the info sheet ----
+    //
+    // Sent to the server (server/, POST /api/feedback) with what Moly knows
+    // about itself: its version, the phone, how it is set up. Never which
+    // apps are limited, or anything about their use. The phone keeps a copy
+    // of each message sent, for "Your past feedback".
+
+    /** The longest message. The box stops there, and doesn't say so: it is more than anyone writes. */
+    const val FEEDBACK_MAX_CHARS = 20_000
+
+    /** Messages in any 24 hours; past that, the form sends people to email. */
+    const val FEEDBACK_DAILY = 10
+
+    /** How much past feedback the phone keeps: its messages' bytes. The oldest go first. */
+    const val FEEDBACK_KEEP_BYTES = 5L * 1024 * 1024
+
+    private const val DAY_MS = 86_400_000L
+
+    /** A message sent: the id the server gave it, when, and what it said. */
+    data class SentFeedback(val id: String, val sentAt: Long, val message: String)
+
+    /** The message as it would be sent (no space around it), or null with nothing to send. */
+    fun feedbackMessage(typed: String): String? =
+        typed.trim().take(FEEDBACK_MAX_CHARS).ifEmpty { null }
+
+    /**
+     * The reply address as typed: null for none given, the address when it
+     * could be one (something@something.something, as the server checks).
+     * `ok` is false for text that isn't: say so instead of sending.
+     */
+    data class Contact(val address: String?, val ok: Boolean)
+
+    fun feedbackContact(typed: String): Contact {
+        val t = typed.trim()
+        return when {
+            t.isEmpty() -> Contact(null, true)
+            t.length <= 254 && Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+").matches(t) -> Contact(t, true)
+            else -> Contact(null, false)
+        }
+    }
+
+    /** How many more can be sent at `now`: FEEDBACK_DAILY in any 24 hours. */
+    fun feedbackLeft(sentAt: List<Long>, now: Long): Int =
+        maxOf(0, FEEDBACK_DAILY - sentAt.count { it > now - DAY_MS && it <= now })
+
+    /** With none left: how long until one of the last day's falls out of it. 0 when one can be sent. */
+    fun feedbackWaitMs(sentAt: List<Long>, now: Long): Long {
+        if (feedbackLeft(sentAt, now) > 0) return 0
+        val recent = sentAt.filter { it > now - DAY_MS && it <= now }.sorted()
+        // The one whose leaving makes room: the FEEDBACK_DAILY-th newest.
+        return recent[recent.size - FEEDBACK_DAILY] + DAY_MS - now
+    }
+
+    /** The send times worth keeping: the last day's, which are all the limit ever looks at. */
+    fun feedbackTimesKept(sentAt: List<Long>, now: Long): List<Long> =
+        sentAt.filter { it > now - DAY_MS }.sorted().takeLast(FEEDBACK_DAILY)
+
+    /**
+     * Past feedback to keep, newest first: as many of the newest as fit in
+     * `maxBytes` (their messages, as UTF-8). The newest is always kept,
+     * whatever its size.
+     */
+    fun feedbackKept(all: List<SentFeedback>, maxBytes: Long = FEEDBACK_KEEP_BYTES): List<SentFeedback> {
+        val kept = mutableListOf<SentFeedback>()
+        var bytes = 0L
+        for (f in all.sortedByDescending { it.sentAt }) {
+            bytes += f.message.toByteArray(Charsets.UTF_8).size
+            if (kept.isNotEmpty() && bytes > maxBytes) break
+            kept += f
+        }
+        return kept
+    }
+
+    fun sentFeedbackToJson(all: List<SentFeedback>): String = JSONArray().apply {
+        for (f in all) put(JSONObject().put("id", f.id).put("at", f.sentAt).put("message", f.message))
+    }.toString()
+
+    fun sentFeedbackFromJson(json: String?): List<SentFeedback> = try {
+        val arr = JSONArray(json ?: "[]")
+        (0 until arr.length()).map { arr.getJSONObject(it) }
+            .map { SentFeedback(it.getString("id"), it.getLong("at"), it.getString("message")) }
+    } catch (e: Exception) { emptyList() }
+
+    /** When the app was first installed and last updated, in ms. */
+    data class InstallTimes(val first: Long, val updated: Long)
+
+    /**
+     * The install times to keep: the first install the phone's backup
+     * remembers (so a new phone doesn't make a long-time user new), else
+     * Android's for this phone; and the later of the two updates.
+     */
+    fun installTimes(kept: InstallTimes?, android: InstallTimes): InstallTimes =
+        if (kept == null) android
+        else InstallTimes(kept.first, maxOf(kept.updated, android.updated))
+
+    /** What Moly reports about itself with a message. */
+    data class FeedbackAbout(
+        val appVersion: String,
+        val appBuild: Long,
+        val androidVersion: String,
+        val androidSdk: Int,
+        /** Maker and model: "OnePlus CPH2401". */
+        val device: String,
+        val install: InstallTimes,
+        /** How it is set up: yes/no, counts and short words, never an app's name. */
+        val diagnostics: Map<String, Any>,
+    )
+
+    /** "OnePlus CPH2401"; just the model when it already starts with the maker ("Google Pixel 7" not twice). */
+    fun deviceName(maker: String, model: String): String {
+        val mk = maker.trim().replaceFirstChar { it.uppercase() }
+        val md = model.trim()
+        return when {
+            mk.isEmpty() -> md
+            md.startsWith(mk, ignoreCase = true) -> md
+            else -> "$mk $md"
+        }
+    }
+
+    /** The body of POST /api/feedback: the names the server reads (server/src/feedback.ts). */
+    fun feedbackBody(message: String, contact: String?, senderId: String, about: FeedbackAbout): String =
+        JSONObject().apply {
+            put("message", message)
+            if (contact != null) put("contact", contact)
+            put("senderId", senderId)
+            put("appVersion", about.appVersion)
+            put("appBuild", about.appBuild)
+            put("androidVersion", about.androidVersion)
+            put("androidSdk", about.androidSdk)
+            put("device", about.device)
+            put("installedAt", about.install.first)
+            put("updatedAt", about.install.updated)
+            put("diagnostics", JSONObject().apply { for ((k, v) in about.diagnostics) put(k, v) })
+        }.toString()
+
+    /** The id the server gave a message it took (its 201's body), or null for anything else. */
+    fun feedbackId(status: Int, body: String?): String? = if (status != 201) null else try {
+        JSONObject(body ?: "").getString("id").ifEmpty { null }
+    } catch (e: Exception) { null }
+
+    // Who is writing and since when, in its own small file ("identity.xml"),
+    // read at every start; the past feedback, which can be megabytes, in
+    // another ("feedback.xml"), read only when the form opens. Both go into
+    // Auto Backup, so they follow the user to a new phone.
+    const val IDENTITY_PREFS = "identity"
+    const val FEEDBACK_PREFS = "feedback"
+
+    /**
+     * The random id sent with feedback, made up on first use and kept:
+     * the same person's messages share it. Nothing about the phone or the
+     * user goes into it.
+     */
+    fun senderId(ctx: Context): String {
+        val p = ctx.getSharedPreferences(IDENTITY_PREFS, Context.MODE_PRIVATE)
+        p.getString("sender", null)?.let { return it }
+        val made = java.util.UUID.randomUUID().toString()
+        p.edit().putString("sender", made).apply()
+        return made
+    }
+
+    /** Keeps the install times (installTimes above) and returns them. */
+    fun noteInstallTimes(ctx: Context, android: InstallTimes): InstallTimes {
+        val p = ctx.getSharedPreferences(IDENTITY_PREFS, Context.MODE_PRIVATE)
+        val kept = if (p.contains("installed")) InstallTimes(p.getLong("installed", 0), p.getLong("updated", 0)) else null
+        val now = installTimes(kept, android)
+        if (now != kept) p.edit().putLong("installed", now.first).putLong("updated", now.updated).apply()
+        return now
+    }
+
+    fun loadSentFeedback(ctx: Context): List<SentFeedback> = sentFeedbackFromJson(
+        ctx.getSharedPreferences(FEEDBACK_PREFS, Context.MODE_PRIVATE).getString("sent", null))
+
+    fun loadFeedbackTimes(ctx: Context): List<Long> = try {
+        val arr = JSONArray(ctx.getSharedPreferences(FEEDBACK_PREFS, Context.MODE_PRIVATE).getString("times", "[]"))
+        (0 until arr.length()).map { arr.getLong(it) }
+    } catch (e: Exception) { emptyList() }
+
+    /** A message was sent: it joins the past feedback (cut to what's kept) and the day's count. */
+    fun addSentFeedback(ctx: Context, sent: SentFeedback) {
+        val times = feedbackTimesKept(loadFeedbackTimes(ctx) + sent.sentAt, sent.sentAt)
+        ctx.getSharedPreferences(FEEDBACK_PREFS, Context.MODE_PRIVATE).edit()
+            .putString("sent", sentFeedbackToJson(feedbackKept(loadSentFeedback(ctx) + sent)))
+            .putString("times", JSONArray(times).toString())
+            .apply()
+    }
+
     // Convenience wrappers joining persistence with the pure math above.
 
     fun usedMsInWindow(ctx: Context, pkg: String, windowMin: Int): Long =

@@ -32,7 +32,11 @@ android {
         versionName = "2.6.0"
         // e2e tests (app/src/androidTest) drive the real app on a device.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The server feedback is sent to (Feedback.kt): trymoly.com, in
+        // every build but "local" below.
+        buildConfigField("String", "API_BASE", "\"https://trymoly.com\"")
     }
+    buildFeatures { buildConfig = true }
 
     if (!keystoreProps.isEmpty) {
         signingConfigs {
@@ -47,6 +51,20 @@ android {
             release {
                 signingConfig = signingConfigs.getByName("release")
             }
+        }
+    }
+
+    // "local": the release build, but its feedback goes to the server on
+    // this machine (`pnpm dev` in server/) instead of trymoly.com. For
+    // trying a change on a phone before it is live: scripts/local.sh builds
+    // and installs it. Signed like a release, so it installs over the real
+    // app and keeps its data; its version reads "-local". Never released.
+    buildTypes {
+        create("local") {
+            initWith(getByName("release"))
+            versionNameSuffix = "-local"
+            buildConfigField("String", "API_BASE", "\"http://localhost:8787\"")
+            matchingFallbacks += "release"
         }
     }
 
