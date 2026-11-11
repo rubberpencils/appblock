@@ -45,10 +45,13 @@ class AppUsageActivity : Activity() {
         super.onCreate(savedInstanceState)
         Ui.edgeToEdge(window)
         pkg = intent.getStringExtra(EXTRA_PKG) ?: run { finish(); return }
-        val start = intent.getStringExtra(UsageActivity.EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        // Where it was before Android built the screen again; else where the Usage page was.
+        val start = ScreenTimeView.savedDay(savedInstanceState)
+            ?: intent.getStringExtra(UsageActivity.EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val name = labelFor(pkg)
         limited = pkg in Storage.loadRules(this).keys
-        val period = intent.getStringExtra(UsageActivity.EXTRA_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
+        val period = ScreenTimeView.savedPeriod(savedInstanceState)
+            ?: intent.getStringExtra(UsageActivity.EXTRA_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
         head = ScreenTimeView(this, start, only = pkg, startPeriod = period ?: Storage.Period.DAY)
 
         val side = Ui.dp(this, 20)
@@ -111,6 +114,11 @@ class AppUsageActivity : Activity() {
         paintCount()
         paintRange()
         loadStats()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::head.isInitialized) ScreenTimeView.save(head, outState)
     }
 
     /** A tap outside a chart's card puts the chart back (Readout). */

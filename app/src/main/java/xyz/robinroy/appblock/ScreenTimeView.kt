@@ -289,5 +289,24 @@ class ScreenTimeView(
     companion object {
         /** The day chart's slices, in minutes: fine enough for sharp spikes, wide enough to read. */
         const val CHART_BUCKET_MIN = 15
+
+        // What's showing, kept while Android builds the screen again (the phone
+        // turned, dark mode switched): a screen's saved state, not storage.
+        private const val STATE_DAY = "screenTimeDay"
+        private const val STATE_PERIOD = "screenTimePeriod"
+
+        /** For an Activity's onSaveInstanceState: the day and the period `view` is on. */
+        fun save(view: ScreenTimeView?, state: android.os.Bundle) {
+            if (view == null) return
+            state.putString(STATE_DAY, view.day.toString())
+            state.putString(STATE_PERIOD, view.period.name)
+        }
+
+        /** The day saved in `state`, if any (and readable). */
+        fun savedDay(state: android.os.Bundle?): LocalDate? =
+            state?.getString(STATE_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+
+        fun savedPeriod(state: android.os.Bundle?): Storage.Period? =
+            state?.getString(STATE_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
     }
 }
