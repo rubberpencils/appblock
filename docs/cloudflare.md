@@ -10,7 +10,8 @@ locally (`server/`, see [AGENTS.md](../AGENTS.md#server)), and CI deploys it.
 
 | What | Where it's set | Changes how |
 |---|---|---|
-| The Worker: its code, the static site, the domain it answers on | `server/wrangler.jsonc` | A push to `main` (`Publish site` workflow) |
+| The Worker: its code, the static site, the domain it answers on, which database and mail binding it has | `server/wrangler.jsonc` | A push to `main` (`Publish site` workflow) |
+| The database's tables | `server/migrations/*.sql` | The same push: the workflow applies them before it deploys |
 | DNS, email, redirects, security settings | The Cloudflare dashboard (below) | By hand, by the maintainer |
 | The domain's registration and nameservers | Namecheap | By hand, by the maintainer |
 
@@ -55,6 +56,18 @@ address to the record, so mail providers send their daily reports to
 Cloudflare, and that page shows who is sending mail as `trymoly.com` and
 whether it passed. Anything listed there before the server sends mail is
 someone forging the domain.
+
+**Database** (Storage & databases → D1): one, `moly`, with its primary in
+Eastern North America (`enam`; the location is chosen at creation and
+stays). Its id is in `server/wrangler.jsonc`. It holds feedback and
+support requests from the app. To look: the dashboard's console, or
+`cf d1 query <id>`.
+
+**The Worker's secret** (Workers & Pages → `moly` → Settings → Variables
+and Secrets): `FEEDBACK_TO`, the address feedback is mailed to. It must be
+a verified destination address of Email Routing: mail from a Worker is
+free to those, and goes nowhere else on this plan. A deploy refuses to go
+out while it is missing.
 
 **`www` redirect** (Rules → Redirect Rules): "Redirect from WWW to root",
 `https://www.*` → `https://${1}`, 301, query string preserved.
@@ -142,7 +155,13 @@ deploy from a laptop: deploys go through CI, which runs the checks first.
 2. Once the domain is active: Email Routing, the `_dmarc` record and DMARC
    Management, Web Analytics, the `www` redirect (accept its offer to
    create the `www` record) and Always Use HTTPS, as above.
-3. Create the API token (the permissions above), create the `production`
+3. Create the database, in Eastern North America, and put its id in
+   `server/wrangler.jsonc`:
+   `cf d1 create --name moly --primary-location-hint enam`.
+4. Create the API token (the permissions above), create the `production`
    environment, limited to `main`, and set both secrets in it.
-4. Run the `Publish site` workflow. The first deploy creates the Worker, the
-   DNS record for `trymoly.com` and its certificate.
+5. Run the `Publish site` workflow. The first deploy creates the Worker, the
+   DNS record for `trymoly.com` and its certificate. It stops, asking for
+   the `FEEDBACK_TO` secret: set it
+   (`cf workers secrets update FEEDBACK_TO --worker moly --type secret_text --text <address>`)
+   and run the workflow again.

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The "local" build (scripts/local.sh): Moly as released, except that it
      sends feedback to the server on the developer's machine, reached as
-     http://localhost:8787 through `adb reverse`. So this build, and only
-     this one, may talk plain HTTP, to localhost alone. -->
+     http://localhost:8787 through `adb reverse`. So this build may talk
+     plain HTTP, to localhost alone. The debug build uses this file too
+     (app/build.gradle.kts): the e2e tests run it against a local server.
+     A release build has neither this file nor the exception. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application android:networkSecurityConfig="@xml/local_network" />
 </manifest>

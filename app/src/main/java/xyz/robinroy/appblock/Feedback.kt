@@ -6,9 +6,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import java.net.HttpURLConnection
 import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 import kotlin.concurrent.thread
 
 /**
@@ -34,6 +32,19 @@ object Feedback {
      * put their own here, as they have no server.
      */
     @Volatile var post: (String) -> Pair<Int, String?> = ::postToServer
+
+    /**
+     * The server: trymoly.com, or a developer's machine in the "local"
+     * build. The full-stack e2e tests point it at the server they run
+     * against (docs/local-dev.md).
+     */
+    @Volatile var apiBase: String = BuildConfig.API_BASE
+
+    /** Sends to the real server again, after a test that didn't. */
+    fun resetForTests() {
+        post = ::postToServer
+        apiBase = BuildConfig.API_BASE
+    }
 
     /** When Android says the app was first installed and last updated on this phone. */
     fun androidInstallTimes(ctx: Context): Storage.InstallTimes {
@@ -107,12 +118,7 @@ object Feedback {
     }
 
     private fun postToServer(body: String): Pair<Int, String?> {
-        val url = URL("${BuildConfig.API_BASE}/api/feedback")
-        // HTTPS or nothing, except to this machine in the "local" build
-        // (app/build.gradle.kts), which talks to a developer's own server.
-        val conn = if (url.protocol == "http" && url.host in setOf("localhost", "127.0.0.1", "10.0.2.2"))
-            url.openConnection() as HttpURLConnection
-        else url.openConnection() as HttpsURLConnection
+        val conn = Net.open(URL("$apiBase/api/feedback"))
         conn.connectTimeout = 15_000
         conn.readTimeout = 15_000
         conn.useCaches = false

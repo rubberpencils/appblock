@@ -28,8 +28,8 @@ android {
         applicationId = "xyz.robinroy.appblock"
         minSdk = 26
         targetSdk = 36
-        versionCode = 19
-        versionName = "2.6.0"
+        versionCode = 20
+        versionName = "2.7.0"
         // e2e tests (app/src/androidTest) drive the real app on a device.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The server feedback is sent to (Feedback.kt): trymoly.com, in
@@ -79,6 +79,13 @@ android {
     // The Shorts-detection rules ship in the APK (v1/rules.signed.json in
     // its assets), so a fresh install works offline before its first fetch.
     sourceSets["main"].assets.srcDir(rootProject.file("rules"))
+
+    // The debug build is what the e2e tests drive, and some of them run
+    // against the server on this machine (docs/local-dev.md): it may talk
+    // plain HTTP to localhost, by the "local" build's own files. Neither
+    // build is ever released.
+    sourceSets["debug"].manifest.srcFile("src/local/AndroidManifest.xml")
+    sourceSets["debug"].res.srcDir("src/local/res")
 }
 
 dependencies {

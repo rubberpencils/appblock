@@ -301,7 +301,21 @@ class FeedbackTest {
     }
 
     @Test
-    fun `only the local build may talk plain HTTP, and only to this machine`() {
+    fun `plain HTTP is for a developer's own machine, and never in a release`() {
+        for (host in listOf("localhost", "127.0.0.1", "10.0.2.2")) {
+            assertTrue(Storage.plainHttpAllowed("http", host, "debug"))
+            assertTrue(Storage.plainHttpAllowed("http", host, "local"))
+            assertFalse("a release talking HTTP to $host", Storage.plainHttpAllowed("http", host, "release"))
+        }
+        for (host in listOf("trymoly.com", "192.168.1.5", "localhost.example.com", "evil.localhost", ""))
+            for (build in listOf("debug", "local", "release"))
+                assertFalse("$build talking HTTP to $host", Storage.plainHttpAllowed("http", host, build))
+        // HTTPS isn't "plain HTTP allowed": it takes the other, checked, path.
+        assertFalse(Storage.plainHttpAllowed("https", "localhost", "debug"))
+    }
+
+    @Test
+    fun `only builds that are never released may talk plain HTTP, and only to this machine`() {
         val app = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
         val ns = "http://schemas.android.com/apk/res/android"
         // Every build: no plain HTTP, and no network config that could say otherwise.
@@ -309,7 +323,10 @@ class FeedbackTest {
             .getElementsByTagName("application").item(0) as org.w3c.dom.Element
         assertEquals("false", main.getAttributeNS(ns, "usesCleartextTraffic"))
         assertEquals("", main.getAttributeNS(ns, "networkSecurityConfig"))
-        // The local build's exception names localhost and nothing wider.
+        // The exception (the local build's, lent to the debug build) names localhost and nothing wider.
+        val gradle = File("build.gradle.kts").readText()
+        assertTrue(gradle.contains("""sourceSets["debug"].manifest.srcFile("src/local/AndroidManifest.xml")"""))
+        assertFalse("the release build was given the exception", Regex("""sourceSets\["(main|release)"\][^\n]*src/local""").containsMatchIn(gradle))
         val config = app.newDocumentBuilder().parse(File("src/local/res/xml/local_network.xml")).documentElement
         val base = config.getElementsByTagName("base-config").item(0) as org.w3c.dom.Element
         assertEquals("false", base.getAttribute("cleartextTrafficPermitted"))

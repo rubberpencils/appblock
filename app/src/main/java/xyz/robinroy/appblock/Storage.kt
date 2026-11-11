@@ -207,6 +207,15 @@ object Storage {
     /** Where the rules are fetched from: this repo's server (server/), over HTTPS only. */
     const val RULES_URL = "https://$RULES_HOST/$RULES_FORMAT/rules.signed.json"
 
+    /**
+     * Whether a connection may be plain HTTP: only to this machine (the
+     * device's own localhost, or 10.0.2.2 from an emulator), where a
+     * developer's server is (docs/local-dev.md), and never in a release
+     * build. Everything else is HTTPS or nothing.
+     */
+    fun plainHttpAllowed(protocol: String, host: String, buildType: String): Boolean =
+        protocol == "http" && buildType != "release" && host in setOf("localhost", "127.0.0.1", "10.0.2.2")
+
     /** `updated`'s one accepted form: UTC to the second, as `./gradlew signRules` writes it. */
     private val UTC_SECOND = Regex("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z""")
 

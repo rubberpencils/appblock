@@ -116,7 +116,8 @@ four jobs must pass before a PR merges:
 - `app-unit-tests`: the app's unit tests, and a compile.
 - `e2e-android-14`, `e2e-android-16`: the suite above on fresh emulators,
   on the Google Play image like `scripts/emulator.sh`'s, and on Android 16,
-  the version the app targets. It installs `fixture/`, a stand-in app with
+  the version the app targets, with the server running beside them for the
+  full-stack tests. It installs `fixture/`, a stand-in app with
   YouTube's and Instagram's player view ids, for the Shorts and Reels tests.
 - `server-checks`: `pnpm check` in `server/`.
 
@@ -129,7 +130,7 @@ Build:
 ```sh
 ./gradlew assembleDebug          # APK at app/build/outputs/apk/debug/app-debug.apk
 ./gradlew testDebugUnitTest      # JUnit tests (also run by the pre-commit hook)
-scripts/e2e.sh                   # end-to-end tests on the emulator (also in CI)
+scripts/e2e.sh                   # end-to-end tests on the emulator, with the server up (also in CI)
 ```
 
 ## Build → phone loop (phone connected over USB)
@@ -301,7 +302,9 @@ pnpm format      # apply the formatter
 
 `pnpm dev` is `wrangler dev`: the Worker in workerd, the runtime Cloudflare
 runs in production, with the static site in front of it as there. None of
-this needs a Cloudflare account.
+this needs a Cloudflare account. Running the app against it, looking
+inside the local database and mail, and the full-stack tests are in
+[docs/local-dev.md](docs/local-dev.md).
 
 - **Tests** are in `server/test/` (Vitest), in three layers: `unit/` for
   plain logic, in Node; `worker/` for the Worker's routes, inside workerd;

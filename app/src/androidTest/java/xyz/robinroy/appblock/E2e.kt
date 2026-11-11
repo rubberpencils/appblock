@@ -57,6 +57,78 @@ object E2e {
     fun shell(cmd: String): String = device.executeShellCommand(cmd)
 
     /**
+     * The backend the tests run against: the real local server, with a
+     * database of its own, that scripts/e2e-run.sh starts on the machine
+     * the device is attached to. The device reaches it as its own
+     * localhost (`adb reverse`). Its database and the mail it "sent" are
+     * read back through the local server's own explorer, so a test checks
+     * both ends: what the app showed, and what the server has.
+     */
+    object Backend {
+        /** http://localhost:8787, when the tests were started with a backend. */
+        val url: String? get() = InstrumentationRegistry.getArguments().getString("backend")
+
+        /** The backend's address, or a failure saying how to get one. */
+        fun need(): String {
+            val at = url ?: throw AssertionError(
+                "This test needs the backend. Run the tests with scripts/e2e.sh (docs/local-dev.md), not Gradle alone.")
+            check(eventually { try { get("/api/health").first == 200 } catch (e: Exception) { false } }) {
+                "The backend at $at doesn't answer. Is `adb reverse` still set? Run scripts/e2e.sh again."
+            }
+            return at
+        }
+
+        private fun request(method: String, path: String, body: String? = null): Pair<Int, String> {
+            val conn = java.net.URL(url + path).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            conn.requestMethod = method
+            try {
+                if (body != null) {
+                    conn.doOutput = true
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.outputStream.use { it.write(body.toByteArray()) }
+                }
+                val status = conn.responseCode
+                val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+                return status to (stream?.bufferedReader()?.use { it.readText() } ?: "")
+            } finally { conn.disconnect() }
+        }
+
+        fun get(path: String): Pair<Int, String> = request("GET", path)
+
+        /** Rows of the server's database: each a map from column to value. */
+        fun rows(sql: String, vararg params: String): List<Map<String, Any?>> {
+            val api = "/cdn-cgi/local/explorer/api/d1/database"
+            val id = org.json.JSONObject(get(api).second).getJSONArray("result").getJSONObject(0).getString("uuid")
+            val asked = org.json.JSONObject().put("sql", sql).put("params", org.json.JSONArray(params.toList()))
+            val (status, answer) = request("POST", "$api/$id/raw", asked.toString())
+            check(status == 200) { "the database refused \"$sql\": HTTP $status $answer" }
+            val results = org.json.JSONObject(answer).getJSONArray("result").getJSONObject(0).getJSONObject("results")
+            val columns = results.getJSONArray("columns")
+            val rows = results.getJSONArray("rows")
+            return (0 until rows.length()).map { r ->
+                (0 until columns.length()).associate { c ->
+                    columns.getString(c) to rows.getJSONArray(r).get(c).takeIf { it != org.json.JSONObject.NULL }
+                }
+            }
+        }
+
+        /** A mail the server sent (locally it sends none: it records each). */
+        data class Mail(val id: String, val to: List<String>, val subject: String, val replyTo: String?)
+
+        fun mails(): List<Mail> {
+            val (_, answer) = get("/cdn-cgi/local/explorer/api/local/email/sending?worker=moly&per_page=100")
+            val list = org.json.JSONObject(answer).getJSONArray("result")
+            return (0 until list.length()).map { list.getJSONObject(it) }.map { m ->
+                val to = m.getJSONArray("to")
+                Mail(m.getString("messageId"), (0 until to.length()).map { to.getString(it) }, m.getString("subject"),
+                    if (m.has("replyTo")) m.getString("replyTo") else null)
+            }
+        }
+    }
+
+    /**
      * Keeps a picture of the screen as `name`.png, for showing a change's
      * screens to a person. Only when asked: run the tests with
      * `-Pandroid.testInstrumentationRunnerArguments.shots=1`, then
@@ -125,6 +197,7 @@ object E2e {
         ctx.getSharedPreferences("appblock", Context.MODE_PRIVATE).edit().clear().commit()
         // No past feedback, none sent today, and no fake server left from the last test.
         ctx.getSharedPreferences(Storage.FEEDBACK_PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+        Feedback.resetForTests()
         Feedback.post = { _ -> throw AssertionError("this test sends feedback but didn't say what the server answers") }
         // An empty screen-time history, and no syncing by itself: tests seed what they need.
         History.autoSync = false
@@ -132,6 +205,9 @@ object E2e {
         Storage.setOnboardingSeen(ctx)
         Storage.saveRules(ctx, rules)
         Feeds.useForTests(null)
+        // The real server and key, and nothing fetched: only what the APK ships.
+        Feeds.useServerForTests(null, null)
+        Feeds.forgetFetchedForTests(ctx)
         BlockerService.closePipForTests(true)
         setBlocker(true)
         openHome()

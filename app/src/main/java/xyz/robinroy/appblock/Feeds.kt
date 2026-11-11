@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
-import javax.net.ssl.HttpsURLConnection
 import kotlin.concurrent.thread
 
 /**
@@ -25,12 +24,18 @@ object Feeds {
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("feedrules", Context.MODE_PRIVATE)
 
+    // Where fetched rules come from and whose signature they need: the real
+    // server and the maintainer's key. The full-stack e2e tests have a
+    // server of their own, with rules signed by a key made for the run.
+    @Volatile private var rulesUrl = Storage.RULES_URL
+    @Volatile private var rulesKey = Storage.RULES_PUBLIC_KEY
+
     /** The rules in use. */
     fun rules(ctx: Context): Storage.FeedRules? = current ?: run {
         val bundled = try {
             ctx.assets.open(BUNDLED).bufferedReader().use { Storage.openSignedRules(it.readText()) }
         } catch (e: Exception) { null }
-        val fetched = prefs(ctx).getString("signed", null)?.let { Storage.openSignedRules(it) }
+        val fetched = prefs(ctx).getString("signed", null)?.let { Storage.openSignedRules(it, rulesKey) }
         Storage.newerRules(bundled, fetched).also { current = it }
     }
 
@@ -47,6 +52,31 @@ object Feeds {
         current = rules
         testFeeds = feeds
     }
+
+    /**
+     * For the full-stack e2e tests: fetch from `url`, trusting rules signed
+     * with `publicKey`; null for either goes back to the real one. What was
+     * fetched before stays, as on a phone whose server published new rules.
+     */
+    fun useServerForTests(url: String?, publicKey: String?) {
+        rulesUrl = url ?: Storage.RULES_URL
+        rulesKey = publicKey ?: Storage.RULES_PUBLIC_KEY
+        current = null
+    }
+
+    /** Nothing fetched yet, as on a new install: only the rules the APK ships. */
+    fun forgetFetchedForTests(ctx: Context) {
+        prefs(ctx).edit().clear().commit()
+        current = null
+    }
+
+    /** As if the last fetch were hours ago: the next look at a feed's app fetches again. */
+    fun dueAgainForTests(ctx: Context) {
+        prefs(ctx).edit().remove("lastAttempt").commit()
+    }
+
+    /** Whether a fetch has been tried since it was last due, and is over. */
+    fun fetchedForTests(ctx: Context): Boolean = prefs(ctx).contains("lastAttempt") && !fetching
 
     /**
      * Fetch the rules again in the background if they may be out of date
@@ -67,10 +97,7 @@ object Feeds {
 
     private fun fetch(ctx: Context) {
         val have = rules(ctx) ?: return
-        // HTTPS or nothing: anything else isn't an HttpsURLConnection, and
-        // the cast throws before a byte is sent. (Android never follows a
-        // redirect from HTTPS to HTTP either.)
-        val conn = URL(Storage.RULES_URL).openConnection() as HttpsURLConnection
+        val conn = Net.open(URL(rulesUrl))
         conn.connectTimeout = 10_000
         conn.readTimeout = 10_000
         conn.useCaches = false
@@ -83,7 +110,7 @@ object Feeds {
                 HttpURLConnection.HTTP_NOT_MODIFIED -> Log.i(TAG, "rules ${have.updated} still current")
                 HttpURLConnection.HTTP_OK -> {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
-                    val got = Storage.openSignedRules(body)
+                    val got = Storage.openSignedRules(body, rulesKey)
                     if (got == null) { Log.w(TAG, "fetched rules not signed or unreadable"); return }
                     if (Storage.newerRules(have, got) !== got) { Log.i(TAG, "fetched rules ${got.updated}, have ${have.updated}"); return }
                     prefs(ctx).edit().putString("signed", body).putString("etag", conn.getHeaderField("ETag")).apply()

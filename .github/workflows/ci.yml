@@ -62,6 +62,19 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v5
+      # The backend the tests run against (scripts/e2e-run.sh starts it):
+      # the server's own toolchain, as in the `server-checks` job.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: server/package.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: server/.node-version
+          cache: pnpm
+          cache-dependency-path: server/pnpm-lock.yaml
+      - name: Install the server's dependencies
+        working-directory: server
+        run: pnpm install --frozen-lockfile
       # Hardware acceleration: GitHub's Linux runners support KVM, but the
       # runner user needs access to the device.
       - name: Enable KVM
@@ -87,7 +100,7 @@ jobs:
           disable-animations: true
           script: |
             if adb shell pm list packages | grep -q com.android.vending; then adb shell pm disable-user --user 0 com.android.vending; fi
-            ./gradlew connectedDebugAndroidTest
+            scripts/e2e-run.sh
       # Which test failed and why (HTML report), plus a screenshot of the
       # screen at the moment each failing test failed and the device log.
       - name: Upload the e2e report
