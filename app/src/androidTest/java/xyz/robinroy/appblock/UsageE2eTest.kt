@@ -28,10 +28,13 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import java.time.temporal.WeekFields
 
 /**
  * Screen time on the home screen: the day's card, stepping through the
- * history and jumping to a day on the calendar, the Usage page with every
+ * history and jumping to a day on the calendar, a week, a month and a
+ * year of it as bars, the Usage page with every
  * app, an app's own page with its patterns, leaving an app out of screen
  * time, the card asking for usage access (and hiding for good), and the
  * real thing: an app opened shows up in the history. The history is seeded on past days at fixed hours, so a run
@@ -243,8 +246,9 @@ class UsageE2eTest {
         // The last 7 days, which are 3 here: the history starts the day before yesterday.
         E2e.waitForFresh(By.desc("Daily average: 20 minutes, Over 3 days"))
         waitFor(By.desc("Most used day: Yesterday, 40 minutes"))
-        waitFor(By.desc("Opened: 2 times, About 30 minutes each"))
-        waitFor(By.desc("Longest session: 40 minutes"))
+        // (Further down the page.)
+        E2e.scrollTo(By.desc("Opened: 2 times, About 30 minutes each"))
+        E2e.scrollTo(By.desc("Longest session: 40 minutes"))
         E2e.scrollTo(By.desc("Peak hours, 7 days: 9 PM to 10 PM"))
 
         // All time: the same history, the same answers.
@@ -359,5 +363,109 @@ class UsageE2eTest {
         E2e.waitForFresh(By.desc("9 PM to 10 PM: 20 minutes a day on average"))
         waitFor(By.descStartsWith("Longest session")).click()
         E2e.waitForFresh(By.desc("Peak hours, 7 days: 9 PM to 10 PM"))
+    }
+
+    /**
+     * What seed() comes to over the week, month or year yesterday was in.
+     * Which that is moves with the day the test runs on: the day before
+     * yesterday's five minutes of Phone are in it too, unless yesterday
+     * began it.
+     */
+    private inner class Seeded(period: Storage.Period) {
+        private val firstDow = WeekFields.of(Locale.getDefault()).firstDayOfWeek
+        private val yesterday = today.minusDays(1)
+        val first = Storage.periodDays(period, yesterday, firstDow).first
+        val last = Storage.periodDays(period, yesterday, firstDow).second
+        val title = Storage.periodTitle(period, yesterday, today, firstDow)
+        val phone = Storage.fmtScreenTime((if (yesterday.minusDays(1).isBefore(first)) 15 else 20).min)
+        private val totalMs = (if (yesterday.minusDays(1).isBefore(first)) 55 else 60).min
+        val total = Storage.fmtScreenTime(totalMs)
+        // The history's three days (it began the day before yesterday), those of them in it.
+        private val days = (0L..2L).count { today.minusDays(it).let { d -> !d.isBefore(first) && !d.isAfter(last) } }
+        val average = "Daily average: " + Storage.fmtScreenTime(totalMs / days).replaceFirstChar { it.lowercase() }
+        val summary = "Screen time, $title: $total. Limited apps 40 minutes. $average."
+        /** Whether there's a week (month, year) of history before it, and one after it up to today. */
+        val hasBefore = yesterday.minusDays(1).isBefore(first)
+        val hasAfter = today.isAfter(last)
+    }
+
+    @Test
+    fun card_showsAWeek_aMonth_andAYear_asBars() {
+        seed()
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+
+        // The week yesterday was in: its total, a day's average, its busiest day.
+        waitFor(text("Week")).click()
+        val week = Seeded(Storage.Period.WEEK)
+        E2e.waitForFresh(text(week.title))
+        E2e.waitForFresh(text(week.total))
+        E2e.waitForFresh(text(week.average))
+        E2e.waitForFresh(text("Busiest day: Yesterday, 55 minutes"))
+        val bars = E2e.waitForFresh(By.desc(week.summary + " Busiest day: Yesterday, 55 minutes."))
+        // The arrows go a week at a time, as far as the history and today do.
+        assertTrue(E2e.eventually { device.findObject(By.desc("Previous week")).isEnabled == week.hasBefore })
+        assertTrue(E2e.eventually { device.findObject(By.desc("Next week")).isEnabled == week.hasAfter })
+
+        // Yesterday's bar, read off; a tap outside the card lets go.
+        val at = ChronoUnit.DAYS.between(week.first, today.minusDays(1))
+        device.click(plotX(bars, (at + 0.5) / 7, Storage.WIDEST_BAR_TICK), bars.visibleBounds.centerY())
+        E2e.waitForFresh(By.desc("Yesterday: Limited apps: 40 minutes, Other apps: 15 minutes"))
+        assertFalse("a tap on the bars isn't a tap on the card", appears(text("Apps"), timeout = 500))
+        waitFor(text("Blocked apps")).click()
+        E2e.waitForFresh(By.desc(week.summary + " Busiest day: Yesterday, 55 minutes."))
+
+        // Its month, a bar a day.
+        waitFor(text("Month")).click()
+        val month = Seeded(Storage.Period.MONTH)
+        E2e.waitForFresh(text(month.title))
+        E2e.waitForFresh(By.desc(month.summary + " Busiest day: Yesterday, 55 minutes."))
+        assertTrue(E2e.eventually { device.findObject(By.desc("Previous month")).isEnabled == month.hasBefore })
+
+        // Its year, a bar a month: a day's average in it.
+        waitFor(text("Year")).click()
+        val year = Seeded(Storage.Period.YEAR)
+        E2e.waitForFresh(text(year.title))
+        E2e.waitForFresh(By.descStartsWith(year.summary + " Busiest month: "))
+        assertTrue(E2e.eventually { device.findObject(By.desc("Next year")).isEnabled == year.hasAfter })
+
+        // And back to the day it was on.
+        waitFor(text("Day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        E2e.waitForFresh(text("Busiest hour: 9 PM, 40 minutes"))
+        E2e.waitForFresh(By.descStartsWith("Screen time, Yesterday: 55 minutes"))
+    }
+
+    @Test
+    fun aMonth_carriesToTheUsagePage_andToAnAppsOwn() {
+        seed()
+        openHome()
+        waitFor(By.desc("Previous day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        waitFor(text("Month")).click()
+        val month = Seeded(Storage.Period.MONTH)
+        E2e.waitForFresh(text(month.title))
+        waitFor(text("See apps")).click()
+
+        // The Usage page, on the same month: each app's time over all of it.
+        waitFor(text("Apps"))
+        E2e.waitForFresh(text(month.title))
+        E2e.waitForFresh(By.desc(month.summary + " Busiest day: Yesterday, 55 minutes."))
+        val clock = E2e.waitForFresh(By.desc("Clock, 40 minutes, limited"))
+        val phone = E2e.waitForFresh(By.desc("Phone, ${month.phone}"))
+        assertTrue("most used first", clock.visibleBounds.top < phone.visibleBounds.top)
+
+        // Clock's own page, on that month too: its time alone.
+        clock.click()
+        waitFor(text("Count in screen time"))
+        E2e.waitForFresh(text(month.title))
+        E2e.waitForFresh(By.descStartsWith("Screen time, ${month.title}: 40 minutes. Daily average: "))
+        E2e.waitForFresh(text("Busiest day: Yesterday, 40 minutes"))
+
+        // A day at a time again: the day it came from.
+        waitFor(text("Day")).click()
+        E2e.waitForFresh(text("Yesterday"))
+        E2e.waitForFresh(text("Busiest hour: 9 PM, 40 minutes"))
     }
 }

@@ -292,14 +292,15 @@ class MainActivity : Activity() {
     private var screenTime: ScreenTimeView? = null
 
     /**
-     * The top card: the day's screen time with Usage access (tap it for the
-     * Usage page), a card asking for it without, or nothing once that's
-     * dismissed (the ⓘ page still has the switch).
+     * The top card: screen time with Usage access, a day, a week, a month or
+     * a year of it (tap it for the Usage page, on the same one), a card
+     * asking for it without, or nothing once that's dismissed (the ⓘ page
+     * still has the switch).
      */
     private fun screenTimeCard(animate: Boolean): View? {
         return when (Storage.usageCard(usageAccessGranted(this), Storage.usageCardDismissed(this))) {
             Storage.UsageCard.STATS -> {
-                // The same view across rebuilds of the page: it keeps its day and what it shows while it refreshes.
+                // The same view across rebuilds of the page: it keeps its day (or week, month, year) and what it shows while it refreshes.
                 val kept = screenTime
                 val view = if (kept != null) {
                     (kept.parent as? android.view.ViewGroup)?.removeView(kept)
@@ -327,7 +328,8 @@ class MainActivity : Activity() {
                     isFocusable = true
                     setOnClickListener {
                         startActivity(Intent(context, UsageActivity::class.java)
-                            .putExtra(UsageActivity.EXTRA_DAY, view.day.toString()))
+                            .putExtra(UsageActivity.EXTRA_DAY, view.day.toString())
+                            .putExtra(UsageActivity.EXTRA_PERIOD, view.period.name))
                     }
                 }
             }

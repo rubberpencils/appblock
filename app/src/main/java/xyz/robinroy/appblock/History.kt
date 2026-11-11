@@ -92,18 +92,26 @@ object History {
             SystemClock.elapsedRealtime(), boot(ctx), gapMs)
     }
 
-    /** One day of history, as of now. */
-    data class Day(val day: LocalDate, val sessions: List<Storage.Session>, val from: Long, val to: Long,
-                   val upTo: Long, val firstDay: LocalDate?)
+    /**
+     * The history from `first` to `last` (whole days; a single one when
+     * they're the same), as of now: `upTo` is now while today is in it.
+     */
+    class Days(val first: LocalDate, val last: LocalDate, val sessions: List<Storage.Session>, val from: Long,
+               val to: Long, val upTo: Long, val firstDay: LocalDate?)
 
     /**
-     * The sessions of `day` (cut to it by the reader), then `done` with them
-     * on the main thread. Today's comes after a sync, with what's on screen
-     * now; null if the history couldn't be read. With `pkg`, that app's alone.
+     * The sessions of the days `first` to `last` (cut to them by the
+     * reader), made into what the screen shows by `prepare`, still on the
+     * history thread (a year is a lot of sessions to add up), then `done`
+     * with that on the main thread. With today in them, they come after a
+     * sync, with what's on screen now; null if the history couldn't be
+     * read. With `pkg`, that app's alone.
      */
-    fun loadDay(ctx: Context, day: LocalDate, zone: ZoneId, pkg: String? = null, done: (Day?) -> Unit) {
-        val (from, to) = Storage.dayBounds(day, zone)
-        load(ctx, from, to, zone, pkg) { r -> done(r?.let { Day(day, it.sessions, from, to, minOf(to, it.now), it.firstDay) }) }
+    fun <T> loadDays(ctx: Context, first: LocalDate, last: LocalDate, zone: ZoneId, pkg: String? = null,
+                     prepare: (Days) -> T, done: (T?) -> Unit) {
+        val from = Storage.dayBounds(first, zone).first
+        val to = Storage.dayBounds(last, zone).second
+        load(ctx, from, to, zone, pkg, { Days(first, last, it.sessions, from, to, minOf(to, it.now), it.firstDay).let(prepare) }, done)
     }
 
     /** Sessions between two times, as of `now`, and the day the history starts (null: empty). */
@@ -114,12 +122,12 @@ object History {
      * `done` on the main thread; null if the history couldn't be read.
      */
     fun loadApp(ctx: Context, pkg: String, first: LocalDate, last: LocalDate, zone: ZoneId, done: (Span?) -> Unit) =
-        load(ctx, Storage.dayBounds(first, zone).first, Storage.dayBounds(last, zone).second, zone, pkg, done)
+        load(ctx, Storage.dayBounds(first, zone).first, Storage.dayBounds(last, zone).second, zone, pkg, { it }, done)
 
-    private fun load(ctx: Context, from: Long, to: Long, zone: ZoneId, pkg: String?, done: (Span?) -> Unit) {
+    private fun <T> load(ctx: Context, from: Long, to: Long, zone: ZoneId, pkg: String?, prepare: (Span) -> T, done: (T?) -> Unit) {
         val app = ctx.applicationContext
         run {
-            var result: Span? = null
+            var result: T? = null
             try {
                 val now0 = System.currentTimeMillis()
                 // Today's in it: synced first (at most every SCREEN_SYNC_MS), with what's on screen now.
@@ -127,11 +135,16 @@ object History {
                 if (withToday && autoSync && due(app, SCREEN_SYNC_MS)) sync(app)
                 val db = db(app)
                 val stored = mutableListOf<Storage.Session>()
+                // One String per app, not per row: a year is many thousands of rows.
+                val names = HashMap<String, String>()
                 val where = "s.start >= ? AND s.start < ? AND s.stop > ?" + if (pkg != null) " AND a.pkg = ?" else ""
                 val args = listOfNotNull((from - Storage.MAX_SESSION_MS).toString(), to.toString(), from.toString(), pkg)
                 db.rawQuery("SELECT a.pkg, s.start, s.stop FROM sessions s JOIN apps a ON a.id = s.app " +
                     "WHERE $where ORDER BY s.start", args.toTypedArray()).use { c ->
-                    while (c.moveToNext()) stored += Storage.Session(c.getString(0), c.getLong(1), c.getLong(2))
+                    while (c.moveToNext()) {
+                        val name = c.getString(0)
+                        stored += Storage.Session(names.getOrPut(name) { name }, c.getLong(1), c.getLong(2))
+                    }
                 }
                 val now = System.currentTimeMillis()
                 val sessions = if (withToday) {
@@ -141,7 +154,7 @@ object History {
                     if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
                 }
                 val firstDay = first?.let { java.time.Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
-                result = Span(sessions, now, firstDay)
+                result = prepare(Span(sessions, now, firstDay))
             } finally {
                 val r = result
                 main.post { done(r) }
