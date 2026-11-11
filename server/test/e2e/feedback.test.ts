@@ -58,6 +58,7 @@ async function eventually<T>(look: () => T | undefined, ms = 5000): Promise<T> {
 
 const message = `The wall didn't come up on Instagram today. (${crypto.randomUUID()})`;
 const full = {
+  kind: "support",
   message,
   contact: "tester@example.com",
   senderId: crypto.randomUUID(),
@@ -85,6 +86,7 @@ describe("feedback sent to the local server", () => {
     expect(saved).toHaveLength(1);
     expect(saved[0]).toMatchObject({
       received_at: receivedAt,
+      kind: "support",
       message,
       contact: "tester@example.com",
       sender_id: full.senderId,
@@ -101,7 +103,7 @@ describe("feedback sent to the local server", () => {
       const mail = printed.slice(at);
       expect(mail).toContain("To: maintainer@example.com");
       expect(mail).toContain(
-        "Subject: Moly feedback · 2.7.0 · OnePlus CPH2401 · installed 42 days",
+        "Subject: [Support] Moly · 2.7.0 · OnePlus CPH2401 · installed 42 days",
       );
       return /Text: (\S+\.txt)/.exec(mail)?.[1];
     });

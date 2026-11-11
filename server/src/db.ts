@@ -17,14 +17,15 @@ export async function saveFeedback(
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO feedback (id, received_at, message, contact, sender_id, app_version,
+      `INSERT INTO feedback (id, received_at, kind, message, contact, sender_id, app_version,
          app_build, android_version, android_sdk, device, installed_at,
          updated_at, diagnostics, country)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id,
       row.receivedAt,
+      row.kind,
       row.message,
       row.contact,
       row.senderId,

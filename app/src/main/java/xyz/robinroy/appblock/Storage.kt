@@ -1627,8 +1627,16 @@ object Storage {
 
     private const val DAY_MS = 86_400_000L
 
-    /** A message sent: the id the server gave it, when, and what it said. */
-    data class SentFeedback(val id: String, val sentAt: Long, val message: String)
+    /** Support is someone stuck, who needs an answer; feedback is everything else. */
+    enum class FeedbackKind(val wire: String, val label: String) {
+        FEEDBACK("feedback", "Feedback"), SUPPORT("support", "Support")
+    }
+
+    /** A message sent: the id the server gave it, when, which kind, what it said, and where a reply was asked for. */
+    data class SentFeedback(
+        val id: String, val sentAt: Long, val message: String,
+        val kind: FeedbackKind = FeedbackKind.FEEDBACK, val contact: String? = null,
+    )
 
     /** The message as it would be sent (no space around it), or null with nothing to send. */
     fun feedbackMessage(typed: String): String? =
@@ -1637,14 +1645,16 @@ object Storage {
     /**
      * The reply address as typed: null for none given, the address when it
      * could be one (something@something.something, as the server checks).
-     * `ok` is false for text that isn't: say so instead of sending.
+     * `ok` is false for text that isn't, and for none at all with a
+     * support request: say so instead of sending.
      */
     data class Contact(val address: String?, val ok: Boolean)
 
-    fun feedbackContact(typed: String): Contact {
+    fun feedbackContact(typed: String, kind: FeedbackKind = FeedbackKind.FEEDBACK): Contact {
         val t = typed.trim()
         return when {
-            t.isEmpty() -> Contact(null, true)
+            // Support can only be answered by mail: no address, nothing to send.
+            t.isEmpty() -> Contact(null, kind != FeedbackKind.SUPPORT)
             t.length <= 254 && Regex("[^\\s@]+@[^\\s@]+\\.[^\\s@]+").matches(t) -> Contact(t, true)
             else -> Contact(null, false)
         }
@@ -1683,13 +1693,18 @@ object Storage {
     }
 
     fun sentFeedbackToJson(all: List<SentFeedback>): String = JSONArray().apply {
-        for (f in all) put(JSONObject().put("id", f.id).put("at", f.sentAt).put("message", f.message))
+        for (f in all) put(JSONObject().put("id", f.id).put("at", f.sentAt).put("message", f.message)
+            .put("kind", f.kind.wire).apply { if (f.contact != null) put("contact", f.contact) })
     }.toString()
 
     fun sentFeedbackFromJson(json: String?): List<SentFeedback> = try {
         val arr = JSONArray(json ?: "[]")
         (0 until arr.length()).map { arr.getJSONObject(it) }
-            .map { SentFeedback(it.getString("id"), it.getLong("at"), it.getString("message")) }
+            .map { o ->
+                SentFeedback(o.getString("id"), o.getLong("at"), o.getString("message"),
+                    FeedbackKind.entries.first { it.wire == o.getString("kind") },
+                    if (o.has("contact")) o.getString("contact") else null)
+            }
     } catch (e: Exception) { emptyList() }
 
     /** When the app was first installed and last updated, in ms. */
@@ -1729,8 +1744,11 @@ object Storage {
     }
 
     /** The body of POST /api/feedback: the names the server reads (server/src/feedback.ts). */
-    fun feedbackBody(message: String, contact: String?, senderId: String, about: FeedbackAbout): String =
+    fun feedbackBody(
+        kind: FeedbackKind, message: String, contact: String?, senderId: String, about: FeedbackAbout
+    ): String =
         JSONObject().apply {
+            put("kind", kind.wire)
             put("message", message)
             if (contact != null) put("contact", contact)
             put("senderId", senderId)

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "wrangler d1 migrations apply moly --local && wrangler dev",
     "dev:mail": "node scripts/dev-real-mail.ts",
-    "db:feedback": "wrangler d1 execute moly --local --command \"SELECT received_at, emailed, app_version, device, sender_id, contact, substr(message, 1, 80) AS message FROM feedback ORDER BY received_at DESC LIMIT 25\"",
+    "db:feedback": "wrangler d1 execute moly --local --command \"SELECT received_at, kind, emailed, app_version, device, sender_id, contact, substr(message, 1, 80) AS message FROM feedback ORDER BY received_at DESC LIMIT 25\"",
     "build:site": "node scripts/build-site.ts",
     "typecheck": "wrangler types && tsc --noEmit",
     "lint": "biome check --error-on-warnings .",

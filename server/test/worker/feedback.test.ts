@@ -34,6 +34,7 @@ function post(body: unknown, headers: Record<string, string> = {}) {
 interface Row {
   id: string;
   received_at: string;
+  kind: string;
   message: string;
   contact: string | null;
   sender_id: string | null;
@@ -82,6 +83,7 @@ describe("a message from the app", () => {
     expect(saved[0]).toMatchObject({
       id: answer.id,
       received_at: answer.receivedAt,
+      kind: "feedback",
       message: full.message,
       contact: full.contact,
       sender_id: full.senderId,
@@ -103,10 +105,27 @@ describe("a message from the app", () => {
     expect((await rows())[0].emailed).toBe(1);
   });
 
+  it("is kept as support when it says so, and its mail is marked", async () => {
+    const sent: Parameters<Mailer["send"]>[0][] = [];
+    const mailer: Mailer = {
+      send: async (message) => {
+        sent.push(message);
+      },
+    };
+    const response = await withMailer(
+      post({ ...full, kind: "support" }),
+      mailer,
+    );
+    expect(response.status).toBe(201);
+    expect((await rows())[0].kind).toBe("support");
+    expect(sent[0].subject.startsWith("[Support] Moly")).toBe(true);
+  });
+
   it("needs only the message", async () => {
     const response = await exports.default.fetch(post({ message: "hi" }));
     expect(response.status).toBe(201);
     expect((await rows())[0]).toMatchObject({
+      kind: "feedback",
       message: "hi",
       contact: null,
       sender_id: null,
@@ -217,6 +236,12 @@ describe("what is refused, and saves nothing", () => {
       "contact",
     ],
     ["a sender id that isn't one", { ...full, senderId: "abc" }, "senderId"],
+    ["a kind that isn't one", { ...full, kind: "urgent" }, "kind"],
+    [
+      "support with no address to answer",
+      { message: "Help", kind: "support" },
+      "contact",
+    ],
     ["a list", [full], "body"],
   ])("%s: 400, naming the field", async (_, body, field) => {
     const response = await exports.default.fetch(post(body));

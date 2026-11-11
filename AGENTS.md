@@ -310,9 +310,11 @@ this needs a Cloudflare account.
   fetch (the signed file, its `ETag`, the `304`) is held to it there.
   `pnpm test --project unit` runs one layer. The pre-commit hook's own
   tests are in `unit/` too.
-- **The database** (D1, SQLite) is made of `migrations/*.sql`. A change is
-  a new numbered file, never an edit to one already applied. Every query
-  is in `src/db.ts`. `pnpm dev` only prints mail (`src/email.ts`).
+- **The database** (D1, SQLite) is made of `migrations/*.sql`, and every
+  query is in `src/db.ts`. Until the first deploy a table is changed in
+  its file and the local copy reset (delete `.wrangler/state`); after it,
+  ask the maintainer before writing a migration. `pnpm dev` only prints
+  mail (`src/email.ts`).
 - **Deploys** happen in CI only, never from a laptop: on a push to `main`
   that changes `server/`, `web/` or `rules/`, `Publish site` runs the
   app's unit tests and `pnpm check`, then `wrangler deploy`. It publishes

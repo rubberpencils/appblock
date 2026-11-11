@@ -1,9 +1,10 @@
--- Feedback sent from the app's info sheet (POST /api/feedback), one row a
--- message. What gets searched or sorted by has its own column; the rest of
+-- Feedback and support requests sent from the app (POST /api/feedback), one
+-- row a message. What gets searched or sorted by has its own column; the rest of
 -- what the app reports about its setup is JSON in `diagnostics`.
 CREATE TABLE feedback (
   id              TEXT PRIMARY KEY,   -- made by the server, a UUID
   received_at     TEXT NOT NULL,      -- UTC, ISO 8601
+  kind            TEXT NOT NULL CHECK (kind IN ('feedback', 'support')),   -- support wants an answer
   message         TEXT NOT NULL,
   contact         TEXT,               -- the sender's email, if they gave one
   sender_id       TEXT,               -- a random id the app made up once: the same person's messages share it

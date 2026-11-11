@@ -12,7 +12,11 @@ const MAX_CONTACT_CHARS = 254;
 const MAX_DIAGNOSTICS_CHARS = 4000;
 
 /** A message as it is stored, before the server adds its own fields. */
+export type Kind = "feedback" | "support";
+
 export interface Feedback {
+  /** Support is someone stuck, who needs an answer; feedback is everything else. */
+  kind: Kind;
   message: string;
   contact: string | null;
   /** A random id the app made up once and keeps: the same person's messages share it. */
@@ -76,6 +80,10 @@ export function parseFeedback(body: unknown, now: number): Parsed {
   const input = body as Record<string, unknown>;
   const bad = (field: string): Parsed => ({ ok: false, field });
 
+  // An app from before there were kinds sends none: feedback.
+  const kind = input.kind ?? "feedback";
+  if (kind !== "feedback" && kind !== "support") return bad("kind");
+
   if (typeof input.message !== "string") return bad("message");
   const message = input.message.replace(/\r\n?/g, "\n").trim();
   if (message === "" || message.length > MAX_MESSAGE_CHARS) {
@@ -90,6 +98,8 @@ export function parseFeedback(body: unknown, now: number): Parsed {
   ) {
     return bad("contact");
   }
+  // Support can only be answered by mail.
+  if (kind === "support" && contact === null) return bad("contact");
 
   const senderId = shortText(input.senderId, 36);
   if (
@@ -128,6 +138,7 @@ export function parseFeedback(body: unknown, now: number): Parsed {
   return {
     ok: true,
     feedback: {
+      kind,
       message,
       contact,
       senderId: senderId === null ? null : senderId.toLowerCase(),

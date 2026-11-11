@@ -38,6 +38,7 @@ function refusedField(body: unknown): string | null {
 describe("a message with everything the app sends", () => {
   it("is taken as sent, times as ISO text and the sender id in lower case", () => {
     expect(parsed(full)).toEqual({
+      kind: "feedback",
       message: "The wall didn't come up on Instagram today.",
       contact: "tester@example.com",
       senderId: "3f9a2b6c-1d4e-4f5a-8b7c-9d0e1f2a3b4c",
@@ -60,6 +61,7 @@ describe("a message with everything the app sends", () => {
 describe("the message", () => {
   it("is all that's needed: the rest is empty", () => {
     expect(parsed({ message: "hi" })).toEqual({
+      kind: "feedback",
       message: "hi",
       contact: null,
       senderId: null,
@@ -97,6 +99,27 @@ describe("the message", () => {
     ["past the limit", { message: "a".repeat(MAX_MESSAGE_CHARS + 1) }],
   ])("is refused when %s", (_, body) => {
     expect(refusedField(body)).toBe("message");
+  });
+});
+
+describe("the kind of message", () => {
+  it("is feedback or support, and feedback when it isn't said", () => {
+    expect(parsed({ ...full, kind: "feedback" }).kind).toBe("feedback");
+    expect(parsed({ ...full, kind: "support" }).kind).toBe("support");
+    expect(parsed(full).kind).toBe("feedback");
+  });
+
+  it.each(["Support", "bug", "", 1, true])("%j is not a kind", (kind) => {
+    expect(refusedField({ ...full, kind })).toBe("kind");
+  });
+
+  it("support needs an address to answer; feedback doesn't", () => {
+    for (const contact of [undefined, null, "", "  "]) {
+      expect(refusedField({ ...full, kind: "support", contact })).toBe(
+        "contact",
+      );
+      expect(parsed({ ...full, kind: "feedback", contact }).contact).toBeNull();
+    }
   });
 });
 

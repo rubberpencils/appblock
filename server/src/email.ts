@@ -32,7 +32,7 @@ export async function sendEmail(mailer: Mailer, mail: Mail): Promise<void> {
   });
 }
 
-const FROM = { email: "feedback@trymoly.com", name: "Moly feedback" };
+const FROM = { email: "feedback@trymoly.com", name: "Moly" };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function days(n: number): string {
@@ -83,8 +83,9 @@ export function feedbackMail(
           Math.floor((received - Date.parse(row.installedAt)) / DAY_MS),
         );
 
+  // The kind first, in brackets: a support request stands out in the inbox.
   const subject = [
-    "Moly feedback",
+    `[${row.kind === "support" ? "Support" : "Feedback"}] Moly`,
     row.appVersion,
     row.device,
     installedDays === null ? null : `installed ${days(installedDays)}`,

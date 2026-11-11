@@ -61,6 +61,17 @@ class FeedbackTest {
             assertEquals(typed, Storage.Contact(null, false), Storage.feedbackContact(typed))
     }
 
+    @Test
+    fun `a support request needs an address, as it can only be answered by mail`() {
+        val support = Storage.FeedbackKind.SUPPORT
+        assertEquals(Storage.Contact(null, false), Storage.feedbackContact("", support))
+        assertEquals(Storage.Contact(null, false), Storage.feedbackContact("  ", support))
+        assertEquals(Storage.Contact(null, false), Storage.feedbackContact("me@", support))
+        assertEquals(Storage.Contact("me@example.com", true), Storage.feedbackContact("me@example.com", support))
+        // Feedback is fine without one.
+        assertEquals(Storage.Contact(null, true), Storage.feedbackContact("", Storage.FeedbackKind.FEEDBACK))
+    }
+
     // ---- ten in any 24 hours ----
 
     @Test
@@ -145,10 +156,23 @@ class FeedbackTest {
 
     @Test
     fun `past feedback survives being stored`() {
-        val all = listOf(Storage.SentFeedback("d253906d", now, "Line one\n\"quoted\" 🙂 ദ"), sent(2))
+        val all = listOf(
+            Storage.SentFeedback("d253906d", now, "Line one\n\"quoted\" 🙂 ദ", Storage.FeedbackKind.SUPPORT, "me@example.com"),
+            sent(2))
         assertEquals(all, Storage.sentFeedbackFromJson(Storage.sentFeedbackToJson(all)))
         assertEquals(emptyList<Storage.SentFeedback>(), Storage.sentFeedbackFromJson(null))
         assertEquals(emptyList<Storage.SentFeedback>(), Storage.sentFeedbackFromJson("not json"))
+    }
+
+    @Test
+    fun `a past message remembers its kind and where a reply was asked for`() {
+        val back = Storage.sentFeedbackFromJson(Storage.sentFeedbackToJson(listOf(
+            Storage.SentFeedback("a", 2, "Help", Storage.FeedbackKind.SUPPORT, "me@example.com"),
+            Storage.SentFeedback("b", 1, "Nice app"))))
+        assertEquals(Storage.FeedbackKind.SUPPORT, back[0].kind)
+        assertEquals("me@example.com", back[0].contact)
+        assertEquals(Storage.FeedbackKind.FEEDBACK, back[1].kind)
+        assertNull(back[1].contact)
     }
 
     // ---- since when Moly has been installed ----
@@ -188,9 +212,10 @@ class FeedbackTest {
 
     @Test
     fun `the body has the names the server reads`() {
-        val body = JSONObject(Storage.feedbackBody("It stopped blocking.", "me@example.com",
-            "3f9a2b6c-1d4e-4f5a-8b7c-9d0e1f2a3b4c", about))
-        assertEquals(setOf("message", "contact", "senderId", "appVersion", "appBuild", "androidVersion",
+        val body = JSONObject(Storage.feedbackBody(Storage.FeedbackKind.FEEDBACK, "It stopped blocking.",
+            "me@example.com", "3f9a2b6c-1d4e-4f5a-8b7c-9d0e1f2a3b4c", about))
+        assertEquals("feedback", body.getString("kind"))
+        assertEquals(setOf("kind", "message", "contact", "senderId", "appVersion", "appBuild", "androidVersion",
             "androidSdk", "device", "installedAt", "updatedAt", "diagnostics"), body.keySet())
         assertEquals("It stopped blocking.", body.getString("message"))
         assertEquals("me@example.com", body.getString("contact"))
@@ -213,19 +238,30 @@ class FeedbackTest {
     fun `the server's own checks read the same names`() {
         // server/src/feedback.ts is what takes this body apart.
         val server = File("../server/src/feedback.ts").readText()
-        val body = JSONObject(Storage.feedbackBody("m", "me@example.com", "id", about))
+        val body = JSONObject(Storage.feedbackBody(Storage.FeedbackKind.SUPPORT, "m", "me@example.com", "id", about))
         for (name in body.keySet()) assertTrue("the server doesn't read \"$name\"", "input.$name" in server)
     }
 
     @Test
+    fun `the kind is said in the server's words`() {
+        // server/src/feedback.ts takes exactly these two.
+        val server = File("../server/src/feedback.ts").readText()
+        for (kind in Storage.FeedbackKind.entries) {
+            assertEquals(kind.wire, JSONObject(Storage.feedbackBody(kind, "m", "me@example.com", "id", about)).getString("kind"))
+            assertTrue("the server doesn't know \"${kind.wire}\"", "\"${kind.wire}\"" in server)
+        }
+        assertEquals(listOf("Feedback", "Support"), Storage.FeedbackKind.entries.map { it.label })
+    }
+
+    @Test
     fun `with no reply address there is no contact at all`() {
-        assertFalse(JSONObject(Storage.feedbackBody("m", null, "id", about)).has("contact"))
+        assertFalse(JSONObject(Storage.feedbackBody(Storage.FeedbackKind.FEEDBACK, "m", null, "id", about)).has("contact"))
     }
 
     @Test
     fun `nothing in the body names an app the user limits`() {
         // What Feedback.about reports is counts and switches; the body is only that and the message.
-        val body = Storage.feedbackBody("m", null, "id", about)
+        val body = Storage.feedbackBody(Storage.FeedbackKind.FEEDBACK, "m", null, "id", about)
         assertFalse(body.contains("com."))
     }
 

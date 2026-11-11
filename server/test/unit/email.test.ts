@@ -6,6 +6,7 @@ import { feedbackMail, type Mailer, sendEmail } from "../../src/email.ts";
 const row: StoredFeedback = {
   id: "d253906d-8ed8-441b-8cc8-855b535da257",
   receivedAt: "2026-11-11T12:00:00.000Z",
+  kind: "feedback",
   message: "The wall didn't come up on Instagram today.\nIt did yesterday.",
   contact: "tester@example.com",
   senderId: "3f9a2b6c-1d4e-4f5a-8b7c-9d0e1f2a3b4c",
@@ -27,7 +28,7 @@ describe("the mail for a message with everything", () => {
     expect(mail.to).toBe("maintainer@example.com");
     expect(mail.from).toEqual({
       email: "feedback@trymoly.com",
-      name: "Moly feedback",
+      name: "Moly",
     });
   });
 
@@ -37,7 +38,7 @@ describe("the mail for a message with everything", () => {
 
   it("says at a glance what it runs on and how long they've had it", () => {
     expect(mail.subject).toBe(
-      "Moly feedback · 2.7.0 · OnePlus CPH2401 · installed 42 days",
+      "[Feedback] Moly · 2.7.0 · OnePlus CPH2401 · installed 42 days",
     );
   });
 
@@ -86,7 +87,7 @@ describe("the mail for a message and nothing else", () => {
   });
 
   it("leaves out what it doesn't know", () => {
-    expect(mail.subject).toBe("Moly feedback");
+    expect(mail.subject).toBe("[Feedback] Moly");
     expect(mail.text).toBe(
       [
         row.message,
@@ -98,6 +99,16 @@ describe("the mail for a message and nothing else", () => {
         "",
       ].join("\n"),
     );
+  });
+});
+
+describe("a support request", () => {
+  it("says so first in the subject, where an inbox shows it", () => {
+    const mail = feedbackMail({ ...row, kind: "support" }, "m@example.com");
+    expect(mail.subject).toBe(
+      "[Support] Moly · 2.7.0 · OnePlus CPH2401 · installed 42 days",
+    );
+    expect(mail.replyTo).toBe("tester@example.com");
   });
 });
 

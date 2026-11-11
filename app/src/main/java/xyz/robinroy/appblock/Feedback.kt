@@ -12,7 +12,8 @@ import javax.net.ssl.HttpsURLConnection
 import kotlin.concurrent.thread
 
 /**
- * Feedback from the info sheet: gathers what goes with a message
+ * Feedback and support requests ("Help & feedback" on the info sheet and
+ * on the app icon's long-press menu): gathers what goes with a message
  * (Storage.FeedbackAbout: the app's version, the phone, how Moly is set up;
  * never which apps are limited), posts it to the server, and keeps a copy
  * on the phone once the server has it. The decisions are in Storage.kt; the
@@ -79,19 +80,22 @@ object Feedback {
      * then tells `done` on it. Sent means the server has it: only then is
      * it kept in the past feedback and counted towards the day's limit.
      */
-    fun send(ctx: Context, message: String, contact: String?, done: (Outcome) -> Unit) {
+    fun send(
+        ctx: Context, kind: Storage.FeedbackKind, message: String, contact: String?, done: (Outcome) -> Unit
+    ) {
         val app = ctx.applicationContext
         val main = Handler(Looper.getMainLooper())
         thread(name = "feedback") {
             val outcome = try {
-                val body = Storage.feedbackBody(message, contact, Storage.senderId(app), about(app))
+                val body = Storage.feedbackBody(kind, message, contact, Storage.senderId(app), about(app))
                 val (status, answer) = post(body)
                 val id = Storage.feedbackId(status, answer)
                 if (id == null) {
                     Log.w(TAG, "not taken: HTTP $status")
                     Outcome.Failed
                 } else {
-                    Storage.addSentFeedback(app, Storage.SentFeedback(id, System.currentTimeMillis(), message))
+                    Storage.addSentFeedback(app,
+                        Storage.SentFeedback(id, System.currentTimeMillis(), message, kind, contact))
                     Outcome.Sent(id)
                 }
             } catch (e: Exception) {

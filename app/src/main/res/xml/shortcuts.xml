@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Long-press launcher shortcuts. "Don't give up!" catches the moment
-     someone long-presses Moly to uninstall it; "Contact support" is a
-     placeholder page for now. -->
+     someone long-presses Moly to uninstall it; "Help & feedback" opens
+     the feedback form as a support request (SupportActivity). Its id is
+     from when it was called "Contact support": ids of shortcuts people
+     may have pinned don't change. -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
         android:shortcutId="dont_give_up"

@@ -630,8 +630,8 @@ class MainActivity : Activity() {
             })
             addView(hairline())
             addView(View(context), LinearLayout.LayoutParams(Ui.MATCH, Ui.dp(context, 20), 1f))
-            // A word to the maker, at the foot: a form of its own (FeedbackPages).
-            addView(Ui.secondaryButton(context, "Send feedback") {
+            // A word to the maker, or a call for help, at the foot: a form of its own (FeedbackPages).
+            addView(Ui.secondaryButton(context, FeedbackPages.TITLE) {
                 sheet.push(FeedbackPages.form(this@MainActivity, sheet))
             }, Ui.lp(Ui.WRAP).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = Ui.dp(context, 16) })
             addView(links)
