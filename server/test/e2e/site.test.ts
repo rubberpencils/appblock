@@ -81,6 +81,7 @@ describe("the website", () => {
     ["/img/og.jpg", "image/jpeg"],
     ["/robots.txt", "text/plain"],
     ["/sitemap.xml", "xml"],
+    ["/.well-known/security.txt", "text/plain"],
   ])("%s is served as %s", async (path, type) => {
     const response = await get(path);
     expect(response.status).toBe(200);

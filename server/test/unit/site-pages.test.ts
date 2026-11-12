@@ -185,6 +185,40 @@ describe("robots.txt", () => {
   });
 });
 
+// Where someone who finds a security hole looks for whom to tell (RFC 9116).
+describe("security.txt", () => {
+  const path = ".well-known/security.txt";
+  const fields = new Map(
+    read(path)
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const colon = line.indexOf(": ");
+        return [line.slice(0, colon), line.slice(colon + 2)] as const;
+      }),
+  );
+
+  it("is published where the standard says", () => {
+    expect([...siteFiles(dirs).keys()]).toContain(path);
+    expect(fields.get("Canonical")).toBe(`${SITE}/${path}`);
+  });
+
+  it("sends reports to the support address", () => {
+    expect(fields.get("Contact")).toBe("mailto:support@trymoly.com");
+  });
+
+  // A file past its date is to be taken as stale and not used; the standard
+  // asks for a date under a year away. When this fails, check the contact
+  // still holds and move `Expires` on.
+  it("hasn't expired, and expires within about a year", () => {
+    const expires = fields.get("Expires") ?? "";
+    expect(expires).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+    const daysLeft = (Date.parse(expires) - Date.now()) / 86_400_000;
+    expect(daysLeft).toBeGreaterThan(0);
+    expect(daysLeft).toBeLessThanOrEqual(366);
+  });
+});
+
 describe("the home page's structured data", () => {
   const json = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(
     read("index.html"),

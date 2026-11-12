@@ -1,0 +1,4 @@
+Contact: mailto:support@trymoly.com
+Expires: 2027-11-01T00:00:00Z
+Preferred-Languages: en
+Canonical: https://trymoly.com/.well-known/security.txt
