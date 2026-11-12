@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget (ScreenTimeWidget). Android draws a widget
+     inside the launcher from a layout file, unlike the app's own screens,
+     and the launcher won't load an app's fonts for it: so this holds only
+     the card and one picture, which the app draws with its own type and
+     chart at the widget's size. The picture keeps its shape if the
+     launcher gives the widget another size than it said (fitStart). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:paddingStart="16dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="14dp">
+
+    <ImageView
+        android:id="@+id/widget_picture"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitStart" />
+</FrameLayout>

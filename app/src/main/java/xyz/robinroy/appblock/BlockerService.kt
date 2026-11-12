@@ -189,9 +189,14 @@ class BlockerService : AccessibilityService() {
         val windows = if (usable) readWindows() else emptyList()
         val screen = screenSize()
         val apps = Storage.onScreenAfter(windows, packageName, screen.y, onScreen)
-        if (apps.keys != onScreen.keys) Log.d(TAG, "on screen: ${apps.keys}")
+        val changed = apps.keys != onScreen.keys
+        if (changed) Log.d(TAG, "on screen: ${apps.keys}")
         onScreen = apps
         enforce(windows, screen)
+        // An app came or went: the home-screen widget's screen time has moved on.
+        // Nothing to do with blocking, and after it: whatever goes wrong there
+        // stays there. It does nothing with no widget placed.
+        if (changed) try { ScreenTimeWidget.screenChanged(this) } catch (e: Throwable) { Log.w(TAG, "widget: $e") }
     }
 
     private fun readWindows(): List<Storage.ScreenWindow> {
