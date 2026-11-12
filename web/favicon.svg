@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 72 72">
+<!-- Moly's icon: the app's launcher icon (app/src/main/res/drawable/ic_launcher_*.xml), drawn again as SVG. -->
+<defs>
+<clipPath id="c"><circle cx="54" cy="54" r="36"/></clipPath>
+<linearGradient id="b" gradientUnits="userSpaceOnUse" x1="14" y1="0" x2="94" y2="108"><stop offset="0" stop-color="#1C2622"/><stop offset=".55" stop-color="#0C100E"/><stop offset="1" stop-color="#050706"/></linearGradient>
+<radialGradient id="g" gradientUnits="userSpaceOnUse" cx="30" cy="86" r="72"><stop offset="0" stop-color="#3DDC9A" stop-opacity=".18"/><stop offset="1" stop-color="#3DDC9A" stop-opacity="0"/></radialGradient>
+<linearGradient id="a0" gradientUnits="userSpaceOnUse" x1="54" y1="30" x2="30" y2="54"><stop offset="0" stop-color="#F6F7F9"/><stop offset="0.68" stop-color="#F6F7F9"/><stop offset="0.85" stop-color="#F4F7F8"/><stop offset="1" stop-color="#E8F6F2"/></linearGradient>
+<linearGradient id="a1" gradientUnits="userSpaceOnUse" x1="30" y1="54" x2="54" y2="78"><stop offset="0" stop-color="#E8F6F2"/><stop offset="0.15" stop-color="#DDF5EC"/><stop offset="0.32" stop-color="#D1F4E6"/><stop offset="0.5" stop-color="#C6F4E0"/><stop offset="0.68" stop-color="#B9F2DA"/><stop offset="0.85" stop-color="#A9EFD2"/><stop offset="1" stop-color="#9AECCA"/></linearGradient>
+<linearGradient id="a2" gradientUnits="userSpaceOnUse" x1="54" y1="78" x2="78" y2="54"><stop offset="0" stop-color="#9AECCA"/><stop offset="0.15" stop-color="#8AEAC2"/><stop offset="0.32" stop-color="#7BE7BA"/><stop offset="0.5" stop-color="#6BE4B2"/><stop offset="0.68" stop-color="#5CE1AA"/><stop offset="0.85" stop-color="#4CDFA2"/><stop offset="1" stop-color="#3DDC9A"/></linearGradient>
+</defs>
+<g clip-path="url(#c)">
+<path d="M0,0h108v108H0z" fill="url(#b)"/><path d="M0,0h108v108H0z" fill="url(#g)"/>
+<circle cx="54" cy="54" r="24" fill="#FFF" fill-opacity=".05" stroke="#FFF" stroke-opacity=".15" stroke-width="6.5"/>
+<g fill="none" stroke-width="6.5"><path d="M54,30A24,24 0 0,0 30,54.42" stroke="url(#a0)"/><path d="M30,54A24,24 0 0,0 54.42,78" stroke="url(#a1)"/><path d="M54,78A24,24 0 0,0 78,54" stroke="url(#a2)"/></g>
+<circle cx="54" cy="30" r="3.25" fill="#F6F7F9"/><circle cx="78" cy="54" r="3.25" fill="#3DDC9A"/>
+<path d="M54,54V42" stroke="#F6F7F9" stroke-width="6" stroke-linecap="round"/>
+<circle cx="75.8" cy="32.4" r="4.8" fill="#3DDC9A"/>
+</g></svg>

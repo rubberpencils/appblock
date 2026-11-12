@@ -71,6 +71,27 @@ describe("the website", () => {
     expect(await response.text()).toBe(readFileSync(join(web, path), "utf8"));
   });
 
+  // What a browser tab, a phone's home screen, a link preview and a search
+  // engine ask for: each has to come as the type its reader expects.
+  it.each([
+    ["/favicon.ico", "image/"],
+    ["/favicon.svg", "image/svg+xml"],
+    ["/apple-touch-icon.png", "image/png"],
+    ["/site.webmanifest", "application/manifest+json"],
+    ["/img/og.jpg", "image/jpeg"],
+    ["/robots.txt", "text/plain"],
+    ["/sitemap.xml", "xml"],
+  ])("%s is served as %s", async (path, type) => {
+    const response = await get(path);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain(type);
+    expect(
+      Buffer.from(await response.arrayBuffer()).equals(
+        readFileSync(join(web, path)),
+      ),
+    ).toBe(true);
+  });
+
   // The pages link to /privacy/ and /terms/; a link typed without the
   // slash still has to arrive.
   it.each(["/privacy", "/terms"])(

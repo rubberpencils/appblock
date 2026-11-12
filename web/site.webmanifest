@@ -1,0 +1,27 @@
+{
+  "name": "Moly",
+  "short_name": "Moly",
+  "description": "Moly is an app blocker for Android with a rolling budget: a few minutes per app, every few hours. It also blocks YouTube Shorts and Instagram Reels.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#0C100E",
+  "theme_color": "#0C100E",
+  "icons": [
+    {
+      "src": "/img/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/img/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
