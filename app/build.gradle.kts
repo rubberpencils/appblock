@@ -28,8 +28,8 @@ android {
         applicationId = "xyz.robinroy.appblock"
         minSdk = 26
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.7.0"
+        versionCode = 21
+        versionName = "2.8.0"
         // e2e tests (app/src/androidTest) drive the real app on a device.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The server feedback is sent to (Feedback.kt): trymoly.com, in
