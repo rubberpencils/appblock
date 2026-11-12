@@ -45,6 +45,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.edgeToEdge(window)
+        savedDay = ScreenTimeView.savedDay(savedInstanceState)
+        savedPeriod = ScreenTimeView.savedPeriod(savedInstanceState)
         // Since when Moly has been installed: kept (and backed up) from the
         // first start, so it is there to go with feedback on a later phone.
         try { Storage.noteInstallTimes(this, Feedback.androidInstallTimes(this)) } catch (e: Exception) {}
@@ -291,21 +293,31 @@ class MainActivity : Activity() {
 
     private var screenTime: ScreenTimeView? = null
 
+    // The card's day and period from before Android built the screen again (the phone turned, dark mode switched).
+    private var savedDay: java.time.LocalDate? = null
+    private var savedPeriod: Storage.Period? = null
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        ScreenTimeView.save(screenTime, outState)
+    }
+
     /**
-     * The top card: the day's screen time with Usage access (tap it for the
-     * Usage page), a card asking for it without, or nothing once that's
-     * dismissed (the ⓘ page still has the switch).
+     * The top card: screen time with Usage access, a day, a week, a month or
+     * a year of it (tap it for the Usage page, on the same one), a card
+     * asking for it without, or nothing once that's dismissed (the ⓘ page
+     * still has the switch).
      */
     private fun screenTimeCard(animate: Boolean): View? {
         return when (Storage.usageCard(usageAccessGranted(this), Storage.usageCardDismissed(this))) {
             Storage.UsageCard.STATS -> {
-                // The same view across rebuilds of the page: it keeps its day and what it shows while it refreshes.
+                // The same view across rebuilds of the page: it keeps its day (or week, month, year) and what it shows while it refreshes.
                 val kept = screenTime
                 val view = if (kept != null) {
                     (kept.parent as? android.view.ViewGroup)?.removeView(kept)
                     kept.load()
                     kept
-                } else ScreenTimeView(this, null, animate).also { screenTime = it }
+                } else ScreenTimeView(this, savedDay, animate, startPeriod = savedPeriod ?: Storage.Period.DAY).also { screenTime = it }
                 val inner = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     val p = Ui.dp(context, 20)
@@ -327,7 +339,8 @@ class MainActivity : Activity() {
                     isFocusable = true
                     setOnClickListener {
                         startActivity(Intent(context, UsageActivity::class.java)
-                            .putExtra(UsageActivity.EXTRA_DAY, view.day.toString()))
+                            .putExtra(UsageActivity.EXTRA_DAY, view.day.toString())
+                            .putExtra(UsageActivity.EXTRA_PERIOD, view.period.name))
                     }
                 }
             }

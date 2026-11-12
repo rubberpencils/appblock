@@ -13,8 +13,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * One app's screen time, from a row on the Usage page: its day (the chart,
- * stepping through the history and the calendar, as on the Usage page),
+ * One app's screen time, from a row on the Usage page: its day, week,
+ * month or year (the chart, stepping through the history and the
+ * calendar, as on the Usage page, and opened on the one showing there),
  * whether it counts in screen time, and its patterns over the last week,
  * 30 days or all time (Storage.appStats): its daily average, the day it
  * was used most, how often it was opened and for how long, and the hours
@@ -44,10 +45,14 @@ class AppUsageActivity : Activity() {
         super.onCreate(savedInstanceState)
         Ui.edgeToEdge(window)
         pkg = intent.getStringExtra(EXTRA_PKG) ?: run { finish(); return }
-        val start = intent.getStringExtra(UsageActivity.EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        // Where it was before Android built the screen again; else where the Usage page was.
+        val start = ScreenTimeView.savedDay(savedInstanceState)
+            ?: intent.getStringExtra(UsageActivity.EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         val name = labelFor(pkg)
         limited = pkg in Storage.loadRules(this).keys
-        head = ScreenTimeView(this, start, only = pkg)
+        val period = ScreenTimeView.savedPeriod(savedInstanceState)
+            ?: intent.getStringExtra(UsageActivity.EXTRA_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
+        head = ScreenTimeView(this, start, only = pkg, startPeriod = period ?: Storage.Period.DAY)
 
         val side = Ui.dp(this, 20)
         val page = LinearLayout(this).apply {
@@ -109,6 +114,11 @@ class AppUsageActivity : Activity() {
         paintCount()
         paintRange()
         loadStats()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (::head.isInitialized) ScreenTimeView.save(head, outState)
     }
 
     /** A tap outside a chart's card puts the chart back (Readout). */

@@ -15,13 +15,14 @@ import android.widget.TextView
 import java.time.LocalDate
 
 /**
- * Screen time, in full, from the home screen's card: the day's chart and
- * busiest hour (ScreenTimeView), then every app used that day, with a bar
- * against the top one and its time; a search box and sort chips (time or
- * name, tap again to flip) as in the app picker. Apps Moly limits say
- * so; the apps the user doesn't count come after, under their own heading,
- * and last, on request, the installed apps with no logged use that day.
- * Tapping an app opens its own page (AppUsageActivity).
+ * Screen time, in full, from the home screen's card: the chart of the
+ * day, week, month or year showing (ScreenTimeView), then every app used
+ * in it, with a bar against the top one and its time; a search box and
+ * sort chips (time or name, tap again to flip) as in the app picker. Apps
+ * Moly limits say so; the apps the user doesn't count come after, under
+ * their own heading, and last, on request, the installed apps with no
+ * logged use in that time. Tapping an app opens its own page
+ * (AppUsageActivity), on the same day, week, month or year.
  */
 class UsageActivity : Activity() {
 
@@ -30,7 +31,7 @@ class UsageActivity : Activity() {
     private lateinit var chips: Map<Storage.UsageSort, TextView>
     private lateinit var scroll: ScrollView
     private var started = false
-    private var shown: History.Day? = null
+    private var shown: ScreenTimeView.Shown? = null
     private var query = ""
     private var sort = Storage.UsageSort.TIME
     private var descending = true
@@ -41,9 +42,13 @@ class UsageActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Ui.edgeToEdge(window)
-        val start = intent.getStringExtra(EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        // Where it was before Android built the screen again; else where the home screen's card was.
+        val start = ScreenTimeView.savedDay(savedInstanceState)
+            ?: intent.getStringExtra(EXTRA_DAY)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        head = ScreenTimeView(this, start) { day -> shown = day; showApps() }
+        val period = ScreenTimeView.savedPeriod(savedInstanceState)
+            ?: intent.getStringExtra(EXTRA_PERIOD)?.let { runCatching { Storage.Period.valueOf(it) }.getOrNull() }
+        head = ScreenTimeView(this, start, startPeriod = period ?: Storage.Period.DAY) { s -> shown = s; showApps() }
         chips = linkedMapOf(Storage.UsageSort.TIME to chip("Time", Storage.UsageSort.TIME),
             Storage.UsageSort.NAME to chip("Name", Storage.UsageSort.NAME))
         val side = Ui.dp(this, 20)
@@ -75,6 +80,11 @@ class UsageActivity : Activity() {
         paintChips()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        ScreenTimeView.save(head, outState)
+    }
+
     /** A tap outside a chart's card puts the chart back (Readout). */
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
         Readout.outside(ev)
@@ -87,12 +97,12 @@ class UsageActivity : Activity() {
         if (started) head.load() else started = true
     }
 
-    /** The list for the day showing, searched and sorted. */
+    /** The list for the day (or week, month, year) showing, searched and sorted. */
     private fun showApps() {
         val d = shown ?: return
         list.removeAllViews()
         val gap = Ui.dp(this, 20)
-        val totals = Storage.appTotals(d.sessions, d.from, d.to)
+        val totals = d.apps
         val limited = Storage.loadRules(this).keys
         val ignored = Storage.screenTimeIgnored(this)
         val used = totals.map { (pkg, ms) -> Storage.AppUse(pkg, labelFor(pkg), ms) }
@@ -104,14 +114,14 @@ class UsageActivity : Activity() {
         val countedShown = Storage.sortApps(counted.filter(found), sort, descending)
         val notCountedShown = Storage.sortApps(notCounted.filter(found), sort, descending)
         if (used.isEmpty()) list.addView(Ui.muted(this, "No apps used.", 14f), Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 8) })
-        for (a in countedShown) list.addView(appRow(a, a.ms / top, a.pkg in limited, d.day, counts = true))
+        for (a in countedShown) list.addView(appRow(a, a.ms / top, a.pkg in limited, d, counts = true))
         if (notCountedShown.isNotEmpty()) {
             list.addView(Ui.eyebrow(this, "Not counted"), Ui.lp().apply { topMargin = gap })
             list.addView(Ui.muted(this, "Left out of your screen time.", 13f), Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 4) })
-            for (a in notCountedShown) list.addView(appRow(a, a.ms / topNotCounted, a.pkg in limited, d.day, counts = false))
+            for (a in notCountedShown) list.addView(appRow(a, a.ms / topNotCounted, a.pkg in limited, d, counts = false))
         }
 
-        // Last, on request: the installed apps with nothing logged that day.
+        // Last, on request: the installed apps with nothing logged in that time.
         val unused = Storage.noUsage(installedApps(), used.map { it.pkg }.toSet()).filter(found)
         if (used.isNotEmpty() && countedShown.isEmpty() && notCountedShown.isEmpty() && unused.isEmpty()) {
             list.addView(Ui.muted(this, "No apps match \u201C${query.trim()}\u201D.", 14f), Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 8) })
@@ -125,10 +135,10 @@ class UsageActivity : Activity() {
         }.apply {
             contentDescription = "Apps with no logged usage, ${unused.size}, " + if (showUnused) "shown" else "hidden"
         }, Ui.lp().apply { topMargin = Ui.dp(this@UsageActivity, 12) })
-        if (showUnused) for (a in unused) list.addView(appRow(a, 0f, a.pkg in limited, d.day, counts = a.pkg !in ignored))
+        if (showUnused) for (a in unused) list.addView(appRow(a, 0f, a.pkg in limited, d, counts = a.pkg !in ignored))
     }
 
-    private fun appRow(a: Storage.AppUse, fraction: Float, limited: Boolean, day: LocalDate, counts: Boolean) = LinearLayout(this).apply {
+    private fun appRow(a: Storage.AppUse, fraction: Float, limited: Boolean, showing: ScreenTimeView.Shown, counts: Boolean) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, Ui.dp(context, 10), 0, Ui.dp(context, 10))
@@ -140,7 +150,8 @@ class UsageActivity : Activity() {
         setOnClickListener {
             startActivity(android.content.Intent(context, AppUsageActivity::class.java)
                 .putExtra(AppUsageActivity.EXTRA_PKG, a.pkg)
-                .putExtra(EXTRA_DAY, day.toString()))
+                .putExtra(EXTRA_DAY, showing.day.toString())
+                .putExtra(EXTRA_PERIOD, showing.period.name))
         }
         Ui.press(this, 0.98f)
         if (!counts) alpha = 0.6f
@@ -267,5 +278,7 @@ class UsageActivity : Activity() {
 
     companion object {
         const val EXTRA_DAY = "day"
+        /** A Storage.Period's name: the week, month or year that day is in, instead of the day alone. */
+        const val EXTRA_PERIOD = "period"
     }
 }

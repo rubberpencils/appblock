@@ -1408,6 +1408,222 @@ object Storage {
     fun perOpenText(ms: Long): String =
         if (ms < 60_000) "Under a minute each" else "About ${fmtScreenTime(ms)} each"
 
+    // ---- screen time over a week, a month or a year ----
+
+    /**
+     * What the screen-time card shows at once: a day (the chart across its
+     * hours), or a week, a month or a year, as bars (PeriodStats).
+     */
+    enum class Period(val label: String) { DAY("Day"), WEEK("Week"), MONTH("Month"), YEAR("Year") }
+
+    /** The first and last day of the `period` that `day` is in; weeks start on `firstDow`. */
+    fun periodDays(period: Period, day: java.time.LocalDate, firstDow: java.time.DayOfWeek): Pair<java.time.LocalDate, java.time.LocalDate> =
+        when (period) {
+            Period.DAY -> day to day
+            Period.WEEK -> day.minusDays(((day.dayOfWeek.value - firstDow.value + 7) % 7).toLong()).let { it to it.plusDays(6) }
+            Period.MONTH -> day.withDayOfMonth(1) to day.withDayOfMonth(day.lengthOfMonth())
+            Period.YEAR -> day.withDayOfYear(1) to day.withDayOfYear(day.lengthOfYear())
+        }
+
+    /**
+     * The day to show after stepping `by` periods from `day`'s (-1: the one
+     * before, 1: the one after): the same weekday a week away, the same date
+     * a month or a year away, but never past today nor before the history
+     * starts. Null when there's nothing that way: the period after hasn't
+     * begun, or the one before has no history. A `day` outside the history
+     * (the clock was set back under a screen left open) can still step
+     * towards it.
+     */
+    fun periodStep(
+        period: Period, day: java.time.LocalDate, by: Long, firstDay: java.time.LocalDate?,
+        today: java.time.LocalDate, firstDow: java.time.DayOfWeek,
+    ): java.time.LocalDate? {
+        val to = when (period) {
+            Period.DAY -> day.plusDays(by)
+            Period.WEEK -> day.plusWeeks(by)
+            Period.MONTH -> day.plusMonths(by)
+            Period.YEAR -> day.plusYears(by)
+        }
+        val (first, last) = periodDays(period, to, firstDow)
+        val start = minOf(firstDay ?: today, today)
+        if (by > 0 && first.isAfter(today) || by < 0 && last.isBefore(start)) return null
+        return maxOf(start, minOf(to, today))
+    }
+
+    /**
+     * The name of the period `day` is in: a day as dayTitle has it; "This
+     * week", "Last week", then its days ("3 to 9 Nov", "27 Oct to 2 Nov");
+     * "This month", "Last month", then "September"; "This year", "Last
+     * year", then "2024". With the year when it isn't this one.
+     */
+    fun periodTitle(period: Period, day: java.time.LocalDate, today: java.time.LocalDate, firstDow: java.time.DayOfWeek): String {
+        val (first, last) = periodDays(period, day, firstDow)
+        val now = periodDays(period, today, firstDow).first
+        fun fmt(d: java.time.LocalDate, pattern: String) =
+            d.format(java.time.format.DateTimeFormatter.ofPattern(pattern, java.util.Locale.ENGLISH))
+        return when (period) {
+            Period.DAY -> dayTitle(day, today)
+            Period.WEEK -> when (first) {
+                now -> "This week"
+                now.minusWeeks(1) -> "Last week"
+                else -> fmt(first, if (first.month == last.month) "d" else "d MMM") + " to " +
+                    fmt(last, if (last.year == today.year) "d MMM" else "d MMM yyyy")
+            }
+            Period.MONTH -> when (first) {
+                now -> "This month"
+                now.minusMonths(1) -> "Last month"
+                else -> fmt(first, if (first.year == today.year) "MMMM" else "MMMM yyyy")
+            }
+            Period.YEAR -> when (first) {
+                now -> "This year"
+                now.minusYears(1) -> "Last year"
+                else -> first.year.toString()
+            }
+        }
+    }
+
+    /**
+     * Each day's screen time from `first` to `last`: `limited`, the time
+     * with one of the `limited` apps on screen, and `all`, the time with any
+     * app on it (split screen counts once). A session across midnight is cut
+     * between its two days; a day is as long as the clock makes it.
+     */
+    class DayTotals(val first: java.time.LocalDate, val limited: LongArray, val all: LongArray)
+
+    fun dayTotals(
+        sessions: List<Session>, first: java.time.LocalDate, last: java.time.LocalDate,
+        zone: java.time.ZoneId, limited: Set<String>,
+    ): DayTotals {
+        val n = (java.time.temporal.ChronoUnit.DAYS.between(first, last) + 1).toInt().coerceAtLeast(1)
+        // Where each day starts, and the last one ends.
+        val edges = LongArray(n + 1) { first.plusDays(it.toLong()).atStartOfDay(zone).toInstant().toEpochMilli() }
+        val inside = clip(sessions, edges[0], edges[n])
+        fun perDay(spans: List<Pair<Long, Long>>): LongArray {
+            val out = LongArray(n)
+            var i = 0
+            // The spans are in order and apart (union), so the day they start in only moves on.
+            for ((a, b) in spans) {
+                while (i < n - 1 && edges[i + 1] <= a) i++
+                var j = i
+                while (j < n && edges[j] < b) {
+                    out[j] += minOf(b, edges[j + 1]) - maxOf(a, edges[j])
+                    j++
+                }
+            }
+            return out
+        }
+        return DayTotals(first,
+            perDay(union(inside.filter { it.pkg in limited }.map { it.start to it.end })),
+            perDay(union(inside.map { it.start to it.end })))
+    }
+
+    /**
+     * A week, a month or a year of screen time, for the card: its bars, one
+     * per day (per month in a year, from `starts`), each the time in
+     * `limited` apps and in the `other` ones while no limited one was on
+     * screen. A year's bars are a day's average in that month, over the
+     * month's days the history has, so a short month, the month the history
+     * began in and the one going on now all compare. `known` bars have
+     * begun; the rest are still to come. The bars before `since` are from
+     * before the history began: nothing is known of them, which isn't the
+     * same as no screen time. `totalMs` and `limitedMs`: the
+     * whole period's. `avgMs`: a day's average over `days`, the period's
+     * days from the history's first to today (today, so far, counts as
+     * one). `busiest`: the tallest bar, the earliest on a tie; null with no
+     * screen time at all.
+     */
+    class PeriodStats(
+        val starts: List<java.time.LocalDate>, val limited: LongArray, val other: LongArray, val since: Int, val known: Int,
+        val totalMs: Long, val limitedMs: Long, val days: Int, val avgMs: Long, val busiest: Int?,
+    )
+
+    fun periodStats(
+        sessions: List<Session>, period: Period, first: java.time.LocalDate, last: java.time.LocalDate,
+        zone: java.time.ZoneId, limited: Set<String>, firstDay: java.time.LocalDate?, today: java.time.LocalDate,
+    ): PeriodStats {
+        val per = dayTotals(sessions, first, last, zone, limited)
+        val n = per.all.size
+        val start = minOf(firstDay ?: today, today)
+        /** Whether the day `i` days into the period is one the history has. */
+        fun counts(i: Int) = first.plusDays(i.toLong()).let { !it.isBefore(start) && !it.isAfter(today) }
+        val days = (0 until n).count { counts(it) }.coerceAtLeast(1)
+        val total = per.all.sum()
+
+        val starts: List<java.time.LocalDate>
+        val lim: LongArray
+        val oth: LongArray
+        if (period == Period.YEAR) {
+            // A bar per month: its days' average, over the days the history has.
+            val months = (0 until n).groupBy { java.time.YearMonth.from(first.plusDays(it.toLong())) }.toSortedMap()
+            starts = months.keys.map { maxOf(it.atDay(1), first) }
+            lim = LongArray(months.size)
+            oth = LongArray(months.size)
+            months.values.forEachIndexed { m, its ->
+                val over = its.count { counts(it) }
+                if (over > 0) {
+                    lim[m] = its.sumOf { per.limited[it] } / over
+                    oth[m] = its.sumOf { per.all[it] - per.limited[it] } / over
+                }
+            }
+        } else {
+            starts = (0 until n).map { first.plusDays(it.toLong()) }
+            lim = per.limited
+            oth = LongArray(n) { per.all[it] - per.limited[it] }
+        }
+        val busiest = starts.indices.filter { lim[it] + oth[it] > 0 }.maxWithOrNull(compareBy({ lim[it] + oth[it] }, { -it }))
+        // The bar the history's first day is in: the last one that starts on or before it.
+        val since = (starts.indexOfLast { !it.isAfter(start) }).coerceAtLeast(0)
+        return PeriodStats(starts, lim, oth, since, starts.count { !it.isAfter(today) },
+            total, per.limited.sum(), days, total / days, busiest)
+    }
+
+    /**
+     * The marks under a period's bars, as the bar's place to its text: a
+     * week names each day ("Mon"), a month numbers every seventh (1, 8, 15,
+     * 22, 29), a year names each quarter's first month ("Jan", "Apr",
+     * "Jul", "Oct").
+     */
+    fun barLabels(period: Period, starts: List<java.time.LocalDate>): List<Pair<Int, String>> =
+        starts.withIndex().mapNotNull { (i, d) ->
+            when (period) {
+                Period.WEEK -> i to d.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH)
+                Period.MONTH -> if ((d.dayOfMonth - 1) % 7 == 0) i to d.dayOfMonth.toString() else null
+                Period.YEAR -> if ((d.monthValue - 1) % 3 == 0) i to d.month.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH) else null
+                Period.DAY -> null
+            }
+        }
+
+    /** A bar read off: which day it is, as dayTitle has it, or which month ("October, daily average"). */
+    fun barTitle(period: Period, start: java.time.LocalDate, today: java.time.LocalDate): String =
+        if (period == Period.YEAR) monthName(start, today) + ", daily average" else dayTitle(start, today)
+
+    /** "October", with the year when it isn't this one. */
+    fun monthName(day: java.time.LocalDate, today: java.time.LocalDate): String =
+        day.format(java.time.format.DateTimeFormatter.ofPattern(
+            if (day.year == today.year) "MMMM" else "MMMM yyyy", java.util.Locale.ENGLISH))
+
+    /**
+     * The marks up the side of a period's bars, in minutes, for a tallest
+     * bar of `peakMs`: round steps (a minute up to eight hours), the fewest
+     * that give at most three marks, the last at or above the peak. A day
+     * is the most a bar can be. Empty for an empty chart.
+     */
+    fun barTicks(peakMs: Long): List<Int> {
+        if (peakMs <= 0) return emptyList()
+        val peak = minOf(peakMs, 1440 * 60_000L) / 60_000.0
+        val step = listOf(1, 2, 5, 10, 15, 20, 30, 60, 120, 180, 240, 360, 480)
+            .first { kotlin.math.ceil(peak / it) <= 3 }
+        val top = (kotlin.math.ceil(peak / step).toInt() * step).coerceAtLeast(step)
+        return (step..top step step).toList()
+    }
+
+    /** One of those marks: "30 min", or "2 hr" when they're all whole hours. */
+    fun fmtBarTick(min: Int, ticks: List<Int>): String =
+        if (ticks.all { it % 60 == 0 }) "${min / 60} hr" else "$min min"
+
+    /** The widest a mark gets, for the room beside the chart. */
+    const val WIDEST_BAR_TICK = "90 min"
+
     // ---- persistence: JSON blobs in SharedPreferences ----
     //
     //   rules:      {"com.instagram.android": {"allow": 5, "window": 120}, ...}
